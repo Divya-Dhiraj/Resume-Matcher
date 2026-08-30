@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { AdditionalInfo } from '@/components/dashboard/resume-component';
 import { useTranslations } from '@/lib/i18n';
+import { SkillGroupsEditor } from './skill-groups-editor';
 
 interface AdditionalFormProps {
   data: AdditionalInfo;
@@ -45,20 +46,18 @@ export const AdditionalForm: React.FC<AdditionalFormProps> = ({ data, onChange }
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-2">
-          <Label
-            htmlFor="technicalSkills"
-            className="font-mono text-xs uppercase tracking-wider text-steel-grey"
-          >
+        <div className="space-y-2 md:col-span-2">
+          <Label className="font-mono text-xs uppercase tracking-wider text-steel-grey">
             {t('resume.additional.technicalSkills')}
           </Label>
-          <Textarea
-            id="technicalSkills"
-            value={formatArray(data.technicalSkills)}
-            onChange={(e) => handleArrayChange('technicalSkills', e.target.value)}
-            onKeyDown={handleKeyDown}
+          {/* SkillGroupsEditor speaks the same `string[]` shape as the plain
+              textareas below, so the file's handleArrayChange/formatArray
+              helpers still round-trip cleanly if a future field also wants a
+              simple textarea. */}
+          <SkillGroupsEditor
+            value={data.technicalSkills ?? []}
+            onChange={(next) => onChange({ ...data, technicalSkills: next })}
             placeholder={t('builder.additionalForm.placeholders.technicalSkills')}
-            className="min-h-[120px] text-black rounded-none border-black bg-white focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:border-blue-700"
           />
         </div>
         <div className="space-y-2">

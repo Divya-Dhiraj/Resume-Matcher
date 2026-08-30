@@ -9,6 +9,7 @@ import { getSortedSections, getSectionMeta } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DynamicResumeSection } from './dynamic-resume-section';
 import { DescriptionList } from './description-list';
+import { parseSkillGroups } from '@/lib/utils/skill-groups';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/modern-two-column.module.css';
 
@@ -367,11 +368,25 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
               >
                 {headingFallbacks.skills}
               </h3>
-              <div className="flex flex-wrap gap-1">
-                {technicalSkills.map((skill, index) => (
-                  <span key={index} className={baseStyles['resume-skill-pill']}>
-                    {skill}
-                  </span>
+              {/* Pills per skill under a bolded category header — matches the
+                  swiss two-column treatment so a resume switched between the
+                  two templates keeps the same skill grouping visually. */}
+              <div className="flex flex-col gap-2">
+                {parseSkillGroups(technicalSkills).map((group, gi) => (
+                  <div key={gi} className="flex flex-col gap-1">
+                    {group.label && (
+                      <span className="font-bold text-xs uppercase tracking-wider text-[var(--resume-accent-primary)]">
+                        {group.label}
+                      </span>
+                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {group.items.map((skill, si) => (
+                        <span key={si} className={baseStyles['resume-skill-pill']}>
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

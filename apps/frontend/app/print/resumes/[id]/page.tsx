@@ -8,6 +8,7 @@ import {
   type BodyFontFamily,
   type AccentColor,
   DEFAULT_TEMPLATE_SETTINGS,
+  isNamedFontFamily,
 } from '@/lib/types/template-settings';
 import { API_BASE } from '@/lib/api/client';
 import { translate } from '@/lib/i18n/server';
@@ -38,22 +39,20 @@ type PageProps = {
 };
 
 /**
- * Parse header font family
+ * Parse header font family. Accepts any registered NAMED_FONT_FAMILIES value;
+ * anything unknown falls back to the current default, so old links keep working.
  */
 function parseHeaderFont(value: string | undefined): HeaderFontFamily {
-  if (value === 'serif' || value === 'sans-serif' || value === 'mono') {
-    return value;
-  }
+  if (isNamedFontFamily(value)) return value;
   return DEFAULT_TEMPLATE_SETTINGS.fontSize.headerFont;
 }
 
 /**
- * Parse body font family
+ * Parse body font family. Same behavior as parseHeaderFont — both fields share
+ * the same font vocabulary.
  */
 function parseBodyFont(value: string | undefined): BodyFontFamily {
-  if (value === 'serif' || value === 'sans-serif' || value === 'mono') {
-    return value;
-  }
+  if (isNamedFontFamily(value)) return value;
   return DEFAULT_TEMPLATE_SETTINGS.fontSize.bodyFont;
 }
 

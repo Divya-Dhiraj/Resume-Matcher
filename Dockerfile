@@ -63,6 +63,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgtk-3-0 \
     # CJK fonts for Chinese/Japanese/Korean PDF rendering via Playwright
     fonts-noto-cjk \
+    # Latin resume fonts: without these, headless Chromium in a slim base falls
+    # back to Noto Sans SC (Chinese) for Latin glyphs — ATS-hostile, visually off.
+    # Metric-compatible substitutes (liberation2 = Arial/Times/Courier;
+    # carlito = Calibri; caladea = Cambria) keep the standard CSS font stacks
+    # honest without the proprietary faces, plus popular resume choices.
+    fonts-liberation2 \
+    fonts-dejavu \
+    fonts-inter \
+    fonts-roboto \
+    fonts-lato \
+    fonts-open-sans \
+    fonts-crosextra-carlito \
+    fonts-crosextra-caladea \
+    fonts-firacode \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

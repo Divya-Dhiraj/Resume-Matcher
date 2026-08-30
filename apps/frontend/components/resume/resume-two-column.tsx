@@ -5,6 +5,7 @@ import { getSortedSections, getSectionMeta } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DynamicResumeSection } from './dynamic-resume-section';
 import { DescriptionList } from './description-list';
+import { parseSkillGroups } from '@/lib/utils/skill-groups';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/swiss-two-column.module.css';
 
@@ -394,15 +395,29 @@ export const ResumeTwoColumn: React.FC<ResumeTwoColumnProps> = ({
             </div>
           )}
 
-          {/* Skills Section */}
+          {/* Skills Section — pills per skill, grouped under a bolded
+              category header when the stored string contains a colon. A bare
+              (unlabeled) entry falls through as a single pill in an untitled
+              bucket so nothing gets dropped. */}
           {isSectionVisible('additional') && technicalSkills.length > 0 && (
             <div className={baseStyles['resume-section']}>
               <h3 className={baseStyles['resume-section-title-sm']}>{headingFallbacks.skills}</h3>
-              <div className="flex flex-wrap gap-1">
-                {technicalSkills.map((skill, index) => (
-                  <span key={index} className={baseStyles['resume-skill-pill']}>
-                    {skill}
-                  </span>
+              <div className="flex flex-col gap-2">
+                {parseSkillGroups(technicalSkills).map((group, gi) => (
+                  <div key={gi} className="flex flex-col gap-1">
+                    {group.label && (
+                      <span className="font-bold text-xs uppercase tracking-wider">
+                        {group.label}
+                      </span>
+                    )}
+                    <div className="flex flex-wrap gap-1">
+                      {group.items.map((skill, si) => (
+                        <span key={si} className={baseStyles['resume-skill-pill']}>
+                          {skill}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

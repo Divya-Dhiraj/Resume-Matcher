@@ -42,7 +42,7 @@ Output ONLY this JSON object and nothing else:
     "workExperience": [],
     "education": [],
     "personalProjects": [],
-    "additional": {{"technicalSkills": [], "languages": [], "certificationsTraining": [], "awards": []}},
+    "additional": {{"technicalSkills": ["Programming: Python, SQL", "Cloud: AWS, Docker"], "languages": [], "certificationsTraining": [], "awards": []}},
     "sectionMeta": [],
     "customSections": {{}}
   }},

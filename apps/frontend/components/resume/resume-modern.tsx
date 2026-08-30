@@ -8,6 +8,7 @@ import type {
 import { getSortedSections } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DescriptionList } from './description-list';
+import { GroupedSkillsList } from './grouped-skills-list';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/modern.module.css';
 
@@ -385,7 +386,13 @@ const AdditionalSection: React.FC<{
         {technicalSkills.length > 0 && (
           <div className="flex">
             <span className="font-bold w-32 shrink-0">{mergedLabels.technicalSkills}</span>
-            <span>{technicalSkills.join(', ')}</span>
+            <div className="flex-1">
+              <GroupedSkillsList
+                skills={technicalSkills}
+                layout="inline"
+                className="flex flex-col gap-0.5"
+              />
+            </div>
           </div>
         )}
         {languages.length > 0 && (

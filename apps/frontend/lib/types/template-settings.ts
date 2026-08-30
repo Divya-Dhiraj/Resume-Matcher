@@ -20,8 +20,35 @@ export type AccentColor = 'blue' | 'green' | 'orange' | 'red';
 
 export type SpacingLevel = 1 | 2 | 3 | 4 | 5;
 
-export type HeaderFontFamily = 'serif' | 'sans-serif' | 'mono';
-export type BodyFontFamily = 'serif' | 'sans-serif' | 'mono';
+/**
+ * Font family choices. The three generic keywords stay first for backward
+ * compatibility with resumes saved before named fonts existed; the named
+ * entries below are packaged in the container (see Dockerfile) so the CSS
+ * stacks below actually resolve, instead of Chromium falling through to Noto
+ * Sans SC for Latin glyphs.
+ */
+export const NAMED_FONT_FAMILIES = [
+  'serif',
+  'sans-serif',
+  'mono',
+  'inter',
+  'roboto',
+  'lato',
+  'open-sans',
+  'carlito',
+  'liberation-serif',
+  'caladea',
+  'dejavu-serif',
+  'fira-code',
+  'liberation-mono',
+] as const;
+
+export type HeaderFontFamily = (typeof NAMED_FONT_FAMILIES)[number];
+export type BodyFontFamily = HeaderFontFamily;
+
+export function isNamedFontFamily(v: unknown): v is HeaderFontFamily {
+  return typeof v === 'string' && (NAMED_FONT_FAMILIES as readonly string[]).includes(v);
+}
 
 export interface MarginSettings {
   top: number; // 5-25mm
@@ -155,16 +182,65 @@ const cjkVars = (locale?: string): string => {
   return stack.map((v) => `var(${v})`).join(', ');
 };
 
-// Header font family mapping. Exported as functions of the locale; the eager
-// maps below preserve the previous default-ordering API for existing callers.
-export const buildHeaderFontMap = (locale?: string): Record<HeaderFontFamily, string> => ({
-  serif: `ui-serif, Georgia, Cambria, "Times New Roman", ${cjkVars(locale)}, Times, serif`,
-  'sans-serif': `ui-sans-serif, system-ui, ${cjkVars(locale)}, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"`,
-  mono: `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, ${cjkVars(locale)}, monospace`,
-});
+// Header font family mapping. Every stack ends in `${cjkVars(locale)}` then a
+// generic keyword, so CJK glyphs still work regardless of the chosen Latin
+// face. Named stacks lead with the requested family and cascade through
+// packaged fallbacks (Dockerfile) → system faces → generic — that order stays
+// legible even when the container is missing a face and on desktop browsers
+// that have their own copy.
+export const buildHeaderFontMap = (locale?: string): Record<HeaderFontFamily, string> => {
+  const cjk = cjkVars(locale);
+  return {
+    // Generic keywords keep the pre-existing behavior for saved resumes.
+    serif: `ui-serif, Georgia, Cambria, "Times New Roman", ${cjk}, Times, serif`,
+    'sans-serif': `ui-sans-serif, system-ui, Inter, Roboto, "Liberation Sans", ${cjk}, sans-serif, "Apple Color Emoji", "Segoe UI Emoji"`,
+    mono: `ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Fira Code", "Liberation Mono", ${cjk}, monospace`,
+    // Named sans-serif faces
+    inter: `Inter, "Inter Variable", ui-sans-serif, system-ui, "Liberation Sans", Arial, ${cjk}, sans-serif`,
+    roboto: `Roboto, ui-sans-serif, system-ui, "Liberation Sans", Arial, ${cjk}, sans-serif`,
+    lato: `Lato, ui-sans-serif, system-ui, "Liberation Sans", Arial, ${cjk}, sans-serif`,
+    'open-sans': `"Open Sans", ui-sans-serif, system-ui, "Liberation Sans", Arial, ${cjk}, sans-serif`,
+    carlito: `Carlito, Calibri, ui-sans-serif, system-ui, "Liberation Sans", Arial, ${cjk}, sans-serif`,
+    // Named serif faces
+    'liberation-serif': `"Liberation Serif", "Times New Roman", Times, ui-serif, ${cjk}, serif`,
+    caladea: `Caladea, Cambria, Georgia, "Liberation Serif", ${cjk}, serif`,
+    'dejavu-serif': `"DejaVu Serif", Georgia, "Liberation Serif", ${cjk}, serif`,
+    // Named monospace faces
+    'fira-code': `"Fira Code", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", ${cjk}, monospace`,
+    'liberation-mono': `"Liberation Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, ${cjk}, monospace`,
+  };
+};
 
 export const buildBodyFontMap = (locale?: string): Record<BodyFontFamily, string> =>
   buildHeaderFontMap(locale);
+
+/**
+ * Human-readable labels + which generic bucket each named font belongs to.
+ * Used by the font picker UI to group choices and preview each button in its
+ * actual face.
+ */
+export const FONT_FAMILY_META: Record<
+  HeaderFontFamily,
+  { label: string; bucket: 'sans-serif' | 'serif' | 'mono'; preview: string }
+> = {
+  serif: { label: 'Serif (default)', bucket: 'serif', preview: 'Georgia, serif' },
+  'sans-serif': { label: 'Sans (default)', bucket: 'sans-serif', preview: 'system-ui, sans-serif' },
+  mono: { label: 'Mono (default)', bucket: 'mono', preview: 'monospace' },
+  inter: { label: 'Inter', bucket: 'sans-serif', preview: 'Inter, sans-serif' },
+  roboto: { label: 'Roboto', bucket: 'sans-serif', preview: 'Roboto, sans-serif' },
+  lato: { label: 'Lato', bucket: 'sans-serif', preview: 'Lato, sans-serif' },
+  'open-sans': { label: 'Open Sans', bucket: 'sans-serif', preview: '"Open Sans", sans-serif' },
+  carlito: { label: 'Carlito (Calibri)', bucket: 'sans-serif', preview: 'Carlito, Calibri, sans-serif' },
+  'liberation-serif': {
+    label: 'Liberation Serif (Times)',
+    bucket: 'serif',
+    preview: '"Liberation Serif", Times, serif',
+  },
+  caladea: { label: 'Caladea (Cambria)', bucket: 'serif', preview: 'Caladea, Cambria, serif' },
+  'dejavu-serif': { label: 'DejaVu Serif', bucket: 'serif', preview: '"DejaVu Serif", Georgia, serif' },
+  'fira-code': { label: 'Fira Code', bucket: 'mono', preview: '"Fira Code", monospace' },
+  'liberation-mono': { label: 'Liberation Mono', bucket: 'mono', preview: '"Liberation Mono", monospace' },
+};
 
 export const HEADER_FONT_MAP: Record<HeaderFontFamily, string> = buildHeaderFontMap();
 export const BODY_FONT_MAP: Record<BodyFontFamily, string> = buildBodyFontMap();

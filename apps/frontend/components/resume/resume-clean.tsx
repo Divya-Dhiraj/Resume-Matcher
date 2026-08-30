@@ -8,6 +8,7 @@ import type {
 import { getSortedSections } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DescriptionList } from './description-list';
+import { GroupedSkillsList } from './grouped-skills-list';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/clean.module.css';
 
@@ -345,11 +346,27 @@ const AdditionalSection: React.FC<{
       </div>
     ) : null;
 
+  // technicalSkills gets its own row-per-group renderer; the flat line()
+  // helper stays in use for the still-flat languages/certs/awards fields.
+  const skillsBlock =
+    technicalSkills.length > 0 ? (
+      <div>
+        <span className={styles.skillLabel}>{mergedLabels.technicalSkills}</span>
+        <div className="mt-0.5">
+          <GroupedSkillsList
+            skills={technicalSkills}
+            layout="inline"
+            className="flex flex-col gap-0.5"
+          />
+        </div>
+      </div>
+    ) : null;
+
   return (
     <div className={baseStyles['resume-section']}>
       <h3 className={styles.sectionTitle}>{displayName}</h3>
       <div className={`${baseStyles['resume-stack']} ${baseStyles['resume-text-sm']}`}>
-        {line(mergedLabels.technicalSkills, technicalSkills)}
+        {skillsBlock}
         {line(mergedLabels.languages, languages)}
         {line(mergedLabels.certifications, certificationsTraining)}
         {line(mergedLabels.awards, awards)}

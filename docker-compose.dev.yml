@@ -1,0 +1,90 @@
+# Dev override for docker-compose.yml — do NOT use in production.
+#
+# Purpose: iterate on backend/frontend source in seconds instead of waiting
+# for a full 5–10 min Docker rebuild every time.
+#
+# How it works:
+#   - Reuses the production image (`resume-matcher-local:latest`), so all its
+#     baked deps (Python packages, apt fonts, Playwright Chromium) stay
+#     available inside the container.
+#   - Bind-mounts the backend and frontend SOURCE directories from your host
+#     over the image's copies, so edits on disk are visible to the container
+#     instantly.
+#   - Overrides the container command to start uvicorn with `--reload` and
+#     Next.js with `next dev --turbopack` — both watch the mounted source and
+#     hot-reload on change.
+#
+# Prereqs (one-time):
+#   1. Build the production image at least once:  docker compose build
+#   2. Install frontend node_modules on the host:  (cd apps/frontend && npm ci)
+#
+# Run:
+#   ./dev.sh              # convenience wrapper (below) — recommended
+#   OR
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Iteration:
+#   Backend .py change → uvicorn --reload restarts in ~1 s
+#   Frontend .tsx / .css change → Turbopack HMR pushes to your browser in ~200 ms
+#   Neither triggers a Docker rebuild.
+#
+# When to still run `docker compose build`:
+#   - You changed the Dockerfile itself
+#   - You added a Python dependency to pyproject.toml
+#   - You added a Node dependency to package.json (also re-run `npm ci` on host)
+#   - You want to verify the final production build before deploying
+services:
+  resume-matcher:
+    # Explicit image name so this override doesn't re-trigger a build; we want
+    # to reuse whatever the last `docker compose build` produced.
+    image: resume-matcher-local:latest
+    # Skip the production start.sh — it launches the compiled Next.js
+    # standalone build, which doesn't watch source. We start both processes
+    # inline instead so this override is fully self-contained.
+    command:
+      - /bin/sh
+      - -c
+      - |
+        set -e
+        echo "[dev] starting backend (uvicorn --reload) on :8000"
+        cd /app/backend
+        python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload &
+        BACKEND_PID=$$!
+        echo "[dev] starting frontend (next dev --turbopack) on :3000"
+        cd /app/frontend
+        # `exec` so the container's PID 1 is next-dev — clean signal handling.
+        exec npx next dev --turbopack --hostname 0.0.0.0 --port 3000
+    ports:
+      # Backend port also exposed so you can hit /api/v1/* directly if useful,
+      # bypassing Next.js's proxy layer while debugging.
+      - "3000:3000"
+      - "8000:8000"
+    volumes:
+      # Backend: mount only the app package. Read-write so a formatter or
+      # codegen script writing back to source files still works.
+      - ./apps/backend/app:/app/backend/app
+      # Frontend: mount the whole app dir so config, tsconfig, tailwind
+      # config, and every source file is live. node_modules is EXPLICITLY
+      # excluded (see next volume) — otherwise the host's arm64 native modules
+      # would collide with the container's Linux modules.
+      - ./apps/frontend:/app/frontend
+      # Anonymous volume shadows the host mount at this subpath so the
+      # container keeps using the node_modules that npm ci installed on host.
+      # If you need a fresh install:  (cd apps/frontend && rm -rf node_modules && npm ci)
+      - /app/frontend/node_modules
+      # Similarly protect the built .next/ directory from being clobbered by
+      # any stale host copy — the dev server writes fresh output here.
+      - /app/frontend/.next
+      # Persistent app data (uploaded resumes, DB) — same as the prod compose.
+      - resume-data:/app/backend/data
+    environment:
+      - RELOAD=true
+      - NODE_ENV=development
+      - NEXT_TELEMETRY_DISABLED=1
+      - FRONTEND_BASE_URL=${FRONTEND_BASE_URL:-http://localhost:3000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LLM=${LOG_LLM:-WARNING}
+      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
+      - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_API_BASE=${LLM_API_BASE:-http://host.docker.internal:11434}

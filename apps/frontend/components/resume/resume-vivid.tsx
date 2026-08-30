@@ -9,6 +9,7 @@ import type {
 import { getSortedSections, getSectionMeta } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DescriptionList } from './description-list';
+import { GroupedSkillsList } from './grouped-skills-list';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/vivid.module.css';
 
@@ -316,7 +317,16 @@ export const ResumeVivid: React.FC<ResumeVividProps> = ({
           {isSectionVisible('additional') && technicalSkills.length > 0 && (
             <div className={baseStyles['resume-section']}>
               <h3 className={styles.sectionTitleSm}>{headingFallbacks.skills}</h3>
-              <p className={baseStyles['resume-text-xs']}>{technicalSkills.join(' • ')}</p>
+              {/* Sidebar is narrow — stack layout puts the category on its own
+                  line above its skills so nothing wraps oddly at 25% width. */}
+              <div className={baseStyles['resume-text-xs']}>
+                <GroupedSkillsList
+                  skills={technicalSkills}
+                  layout="stack"
+                  className="flex flex-col gap-1"
+                  joiner=" • "
+                />
+              </div>
             </div>
           )}
 

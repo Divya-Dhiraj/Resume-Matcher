@@ -21,12 +21,14 @@ from app.pdf import close_pdf_renderer, init_pdf_renderer
 from app.routers import (
     applications_router,
     config_router,
+    debug_router,
     enrichment_router,
     health_router,
     jobs_router,
     resume_wizard_router,
     resumes_router,
 )
+from app.services import llm_audit
 
 
 def _configure_application_logging() -> None:
@@ -41,7 +43,9 @@ _configure_application_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan manager."""
-    # Startup
+    # Startup — install the LLM audit callback first so any LLM call fired
+    # during other startup steps (health probe, migrations) is captured too.
+    llm_audit.install()
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     # Import a legacy TinyDB database into SQLite if present (idempotent).
     # Fail-fast on error: starting with an empty DB would look like data loss.
@@ -94,6 +98,8 @@ app.include_router(jobs_router, prefix="/api/v1")
 app.include_router(enrichment_router, prefix="/api/v1")
 app.include_router(applications_router, prefix="/api/v1")
 app.include_router(resume_wizard_router, prefix="/api/v1")
+# debug_router already declares its own /api/v1/debug prefix — no extra prefix.
+app.include_router(debug_router)
 
 
 @app.get("/")

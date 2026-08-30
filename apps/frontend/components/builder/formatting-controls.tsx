@@ -23,6 +23,8 @@ import {
   TEMPLATE_OPTIONS,
   PAGE_SIZE_INFO,
   ACCENT_COLOR_MAP,
+  NAMED_FONT_FAMILIES,
+  FONT_FAMILY_META,
 } from '@/lib/types/template-settings';
 import { TemplateThumbnail } from './template-selector';
 import { useTranslations } from '@/lib/i18n';
@@ -155,9 +157,13 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
   );
 
   const getFontLabel = (font: HeaderFontFamily | BodyFontFamily) => {
+    // The three legacy generics stay i18n-driven so existing translations still
+    // apply; the named faces surface their own label straight from the meta
+    // table (they're proper nouns — no localization needed).
     if (font === 'sans-serif') return t('builder.formatting.fontNames.sans');
     if (font === 'serif') return t('builder.formatting.fontNames.serif');
-    return t('builder.formatting.fontNames.mono');
+    if (font === 'mono') return t('builder.formatting.fontNames.mono');
+    return FONT_FAMILY_META[font].label;
   };
 
   return (
@@ -344,63 +350,90 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                 value={settings.fontSize.headerScale}
                 onChange={(v) => handleFontChange('headerScale', v)}
               />
-              {/* Header Font Family */}
+              {/* Header Font Family — dropdown groups the 13 registered faces
+                  by bucket so the picker stays readable at any width. */}
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs w-16 text-ink-soft">
                   {t('builder.formatting.headerFontFamily')}:
                 </span>
-                <div className="flex gap-1">
-                  {(['serif', 'sans-serif', 'mono'] as HeaderFontFamily[]).map((font) => (
-                    <button
-                      key={font}
-                      onClick={() => handleHeaderFontChange(font)}
-                      className={`px-2 py-1 font-mono text-xs border transition-all ${
-                        settings.fontSize.headerFont === font
-                          ? 'bg-blue-700 text-white border-blue-700 shadow-sw-xs'
-                          : 'bg-white text-ink-soft border-steel-grey hover:border-black'
-                      }`}
-                      style={{
-                        fontFamily:
-                          font === 'serif'
-                            ? 'Georgia, serif'
-                            : font === 'mono'
-                              ? 'monospace'
-                              : 'system-ui, sans-serif',
-                      }}
-                    >
-                      {getFontLabel(font)}
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={settings.fontSize.headerFont}
+                  onChange={(e) => handleHeaderFontChange(e.target.value as HeaderFontFamily)}
+                  className="flex-1 px-2 py-1 font-mono text-xs border border-steel-grey bg-white hover:border-black focus:outline-none focus:border-blue-700"
+                  style={{
+                    fontFamily: FONT_FAMILY_META[settings.fontSize.headerFont].preview,
+                  }}
+                >
+                  <optgroup label="Sans-serif">
+                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'sans-serif').map(
+                      (font) => (
+                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                          {getFontLabel(font)}
+                        </option>
+                      )
+                    )}
+                  </optgroup>
+                  <optgroup label="Serif">
+                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'serif').map(
+                      (font) => (
+                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                          {getFontLabel(font)}
+                        </option>
+                      )
+                    )}
+                  </optgroup>
+                  <optgroup label="Monospace">
+                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'mono').map(
+                      (font) => (
+                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                          {getFontLabel(font)}
+                        </option>
+                      )
+                    )}
+                  </optgroup>
+                </select>
               </div>
-              {/* Body Font Family */}
+              {/* Body Font Family — same dropdown shape as header, own state. */}
               <div className="flex items-center gap-2">
                 <span className="font-mono text-xs w-16 text-ink-soft">
                   {t('builder.formatting.bodyFontFamily')}:
                 </span>
-                <div className="flex gap-1">
-                  {(['serif', 'sans-serif', 'mono'] as BodyFontFamily[]).map((font) => (
-                    <button
-                      key={font}
-                      onClick={() => handleBodyFontChange(font)}
-                      className={`px-2 py-1 font-mono text-xs border transition-all ${
-                        settings.fontSize.bodyFont === font
-                          ? 'bg-blue-700 text-white border-blue-700 shadow-sw-xs'
-                          : 'bg-white text-ink-soft border-steel-grey hover:border-black'
-                      }`}
-                      style={{
-                        fontFamily:
-                          font === 'serif'
-                            ? 'Georgia, serif'
-                            : font === 'mono'
-                              ? 'monospace'
-                              : 'system-ui, sans-serif',
-                      }}
-                    >
-                      {getFontLabel(font)}
-                    </button>
-                  ))}
-                </div>
+                <select
+                  value={settings.fontSize.bodyFont}
+                  onChange={(e) => handleBodyFontChange(e.target.value as BodyFontFamily)}
+                  className="flex-1 px-2 py-1 font-mono text-xs border border-steel-grey bg-white hover:border-black focus:outline-none focus:border-blue-700"
+                  style={{
+                    fontFamily: FONT_FAMILY_META[settings.fontSize.bodyFont].preview,
+                  }}
+                >
+                  <optgroup label="Sans-serif">
+                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'sans-serif').map(
+                      (font) => (
+                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                          {getFontLabel(font)}
+                        </option>
+                      )
+                    )}
+                  </optgroup>
+                  <optgroup label="Serif">
+                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'serif').map(
+                      (font) => (
+                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                          {getFontLabel(font)}
+                        </option>
+                      )
+                    )}
+                  </optgroup>
+                  <optgroup label="Monospace">
+                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'mono').map(
+                      (font) => (
+                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                          {getFontLabel(font)}
+                        </option>
+                      )
+                    )}
+                  </optgroup>
+                </select>
               </div>
             </div>
           </div>

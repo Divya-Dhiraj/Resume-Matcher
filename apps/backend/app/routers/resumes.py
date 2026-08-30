@@ -1597,8 +1597,12 @@ async def download_resume_pdf(
     lineHeight: int = Query(3, ge=1, le=5),
     fontSize: int = Query(3, ge=1, le=5),
     headerScale: int = Query(3, ge=1, le=5),
-    headerFont: str = Query("serif", pattern="^(serif|sans-serif|mono)$"),
-    bodyFont: str = Query("sans-serif", pattern="^(serif|sans-serif|mono)$"),
+    # Accepts either the three legacy generics (serif/sans-serif/mono, kept for
+    # existing saved settings) or any of the named faces the frontend registers
+    # in NAMED_FONT_FAMILIES — validation of the exact vocabulary lives on the
+    # frontend so this pattern only rejects obviously-hostile input.
+    headerFont: str = Query("serif", pattern=r"^[a-z][a-z0-9-]{0,31}$"),
+    bodyFont: str = Query("sans-serif", pattern=r"^[a-z][a-z0-9-]{0,31}$"),
     compactMode: bool = Query(False),
     showContactIcons: bool = Query(False),
     accentColor: str = Query("blue", pattern="^(blue|green|orange|red)$"),

@@ -67,7 +67,10 @@ RESUME_SCHEMA_EXAMPLE = """{
     }
   ],
   "additional": {
-    "technicalSkills": ["Python", "JavaScript", "AWS", "Docker"],
+    "technicalSkills": [
+      "Programming: Python, JavaScript",
+      "Cloud & DevOps: AWS, Docker"
+    ],
     "languages": ["English (Native)", "Spanish (Conversational)"],
     "certificationsTraining": ["AWS Solutions Architect"],
     "awards": ["Employee of the Year 2022"]
@@ -133,7 +136,10 @@ IMPROVE_SCHEMA_EXAMPLE = """{
     }
   ],
   "additional": {
-    "technicalSkills": ["Python", "JavaScript", "AWS", "Docker"],
+    "technicalSkills": [
+      "Programming: Python, JavaScript",
+      "Cloud & DevOps: AWS, Docker"
+    ],
     "languages": ["English (Native)", "Spanish (Conversational)"],
     "certificationsTraining": ["AWS Solutions Architect"],
     "awards": ["Employee of the Year 2022"]
@@ -181,6 +187,7 @@ Rules:
 - Normalize date separators: "2020-2021" → "2020 - 2021", "Current"/"Ongoing" → "Present". Do NOT discard months.
 - For ambiguous dates like "3 years experience", infer approximate years from context or use "~YYYY"
 - Flag overlapping dates (concurrent roles) by preserving both, don't merge
+- additional.technicalSkills is a list of strings. When the source resume groups skills under category headings (e.g. "BI & Visualisation: Power BI, Tableau" or a bold "Programming" label followed by items), emit ONE STRING PER CATEGORY in the shape "Category: item1, item2, item3", keeping the original category order. If the source has no categories, emit each skill as its own bare string. Never drop items — every listed skill must appear in exactly one output entry.
 
 Resume to parse:
 {resume_text}"""

@@ -1,52 +1,42 @@
 import type { Metadata } from 'next';
-import { Geist, Noto_Sans_JP, Noto_Sans_KR, Noto_Sans_SC, Space_Grotesk } from 'next/font/google';
 import './(default)/css/globals.css';
 
-const spaceGrotesk = Space_Grotesk({
-  variable: '--font-space-grotesk',
-  subsets: ['latin'],
-  display: 'swap',
-});
-
-const geist = Geist({
-  variable: '--font-geist',
-  subsets: ['latin'],
-  display: 'swap',
-});
-
-// CJK fallbacks for Chinese/Japanese/Korean resume content.
-//
-// `preload: false` because the CJK unicode-ranges are not preloadable anyway
-// (Google exposes no `chinese-simplified` subset to next/font) and we don't
-// want to ship a large font to users who never render CJK. Turbopack already
-// skips preloading these, but the legacy webpack font path errors on a
-// preloaded font declared without `subsets`, so this keeps both building.
-//
-// No `weight` array: Google serves these as variable fonts, so listing four
-// weights emitted four identical @font-face blocks per unicode subset — 405
-// rules and 372 KB of render-blocking CSS for one face, ~4x duplication.
-//
-// All three regional faces are loaded because Noto Sans SC covers only 0.7% of
-// Hangul (Korean rendered as tofu) while covering ~93% of kana (hijacking
-// Japanese with Simplified-Chinese glyph forms). The per-locale ordering lives
-// in lib/types/template-settings.ts.
-const notoSansSC = Noto_Sans_SC({
-  variable: '--font-noto-sans-sc',
-  display: 'swap',
-  preload: false,
-});
-
-const notoSansKR = Noto_Sans_KR({
-  variable: '--font-noto-sans-kr',
-  display: 'swap',
-  preload: false,
-});
-
-const notoSansJP = Noto_Sans_JP({
-  variable: '--font-noto-sans-jp',
-  display: 'swap',
-  preload: false,
-});
+/**
+ * Local fork note (why we don't use `next/font/google` here):
+ *
+ * Building this app inside the Docker builder repeatedly failed with
+ *   `Failed to fetch <URL> from Google Fonts` on Space_Grotesk / Geist /
+ *   Noto_Sans_{SC,KR,JP}
+ * — the builder network can't reliably reach fonts.googleapis.com at compile
+ * time. Rather than depend on that fetch every rebuild, we now bind the CSS
+ * variables the rest of the app expects (`--font-geist`, `--font-space-grotesk`,
+ * `--font-noto-sans-{sc,kr,jp}`) to system font stacks. On the DESKTOP browser
+ * the visible faces are slightly different (system UI faces instead of Geist /
+ * Space Grotesk), which is fine — the resume-render pipeline picks its own
+ * font (see FONT_FAMILY_META in lib/types/template-settings.ts), and CJK
+ * content still renders correctly because the container installs
+ * `fonts-noto-cjk` as system fonts (see Dockerfile).
+ */
+const FONT_VARIABLE_STYLES: React.CSSProperties = {
+  // Two branded faces the app's Tailwind config references — remapped to a
+  // reasonable system stack. Users who want Geist/Space Grotesk can host them
+  // themselves and swap these values.
+  ['--font-geist' as string]:
+    'ui-sans-serif, system-ui, "Inter", "Helvetica Neue", Arial, sans-serif',
+  ['--font-space-grotesk' as string]:
+    '"Space Grotesk", ui-sans-serif, system-ui, "Inter", Arial, sans-serif',
+  // CJK variables — bind directly to installed Noto CJK families so the
+  // per-locale stack in template-settings.ts still resolves correctly. On
+  // desktop browsers without these installed, the browser falls through to
+  // its own CJK support (macOS ships PingFang/Hiragino, Windows ships MS
+  // Gothic, etc.), so nothing appears as tofu.
+  ['--font-noto-sans-sc' as string]:
+    '"Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", sans-serif',
+  ['--font-noto-sans-jp' as string]:
+    '"Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif',
+  ['--font-noto-sans-kr' as string]:
+    '"Noto Sans KR", "Noto Sans CJK KR", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif',
+};
 
 export const metadata: Metadata = {
   title: 'Resume Matcher',
@@ -57,12 +47,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en-US" className="h-full" suppressHydrationWarning>
-      <body
-        className={`${geist.variable} ${spaceGrotesk.variable} ${notoSansSC.variable} ${notoSansKR.variable} ${notoSansJP.variable} antialiased bg-background text-ink-soft min-h-full`}
-      >
-        {children}
-      </body>
+    <html lang="en-US" className="h-full" suppressHydrationWarning style={FONT_VARIABLE_STYLES}>
+      <body className="antialiased bg-background text-ink-soft min-h-full">{children}</body>
     </html>
   );
 }
