@@ -51,16 +51,17 @@ class Resume(Base):
     created_at: Mapped[str] = mapped_column(String, default=_utcnow_iso)
     updated_at: Mapped[str] = mapped_column(String, default=_utcnow_iso)
 
+    # NOTE: previously carried a partial unique index (`ux_resumes_single_master`)
+    # that forbade more than one row with is_master=True. This fork drops that
+    # constraint so users can keep several parallel master templates (e.g. one
+    # framed for BI/Analytics, one for SAP Consultant, one for Data Engineer)
+    # and pick which to tailor from per JD. A lightweight startup migration in
+    # database.py drops the index if a pre-existing DB still carries it.
+    #
+    # A non-unique helper index on is_master keeps `list_master_resumes`
+    # queries efficient without re-imposing the exclusivity rule.
     __table_args__ = (
-        # At most one master resume. Partial unique index enforces the invariant
-        # at the storage layer; ``_master_resume_lock`` remains the primary
-        # (race-free) mechanism in the facade.
-        Index(
-            "ux_resumes_single_master",
-            "is_master",
-            unique=True,
-            sqlite_where=text("is_master = 1"),
-        ),
+        Index("ix_resumes_is_master", "is_master"),
     )
 
 

@@ -25,8 +25,10 @@ import {
   deleteResume,
   retryProcessing,
   fetchJobDescription,
+  setResumeAsMaster,
   type ResumeListItem,
 } from '@/lib/api/resume';
+import Star from 'lucide-react/dist/esm/icons/star';
 import { useStatusCache } from '@/lib/context/status-cache';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
@@ -118,13 +120,20 @@ export default function DashboardPage() {
         setMasterResumeId(null);
       }
 
-      const filtered = data.filter((r) => r.resume_id !== resolvedMasterId);
-      setTailoredResumes(filtered);
+      // Keep EVERY resume — including the current master — in the grid, so
+      // clicking "Set as master" on a card doesn't teleport that card into a
+      // separate top-left slot. The card stays where it is; only its badge
+      // flips from "Set as master" → "MASTER". Previously the master was
+      // filtered out here and rendered in a special big card, which made
+      // switching feel like cards were disappearing.
+      setTailoredResumes(data);
 
       // Only fetch job descriptions for resumes that are actually tailored
       // (identified by having a non-null parent_id). This avoids N+1 calls
-      // for untailored resumes.
-      const tailoredWithParent = filtered.filter((r) => r.parent_id);
+      // for untailored resumes. Uses the same `data` list that feeds the
+      // grid — the earlier `filtered` variable was removed when we stopped
+      // hiding the master from the grid.
+      const tailoredWithParent = data.filter((r) => r.parent_id);
 
       // Guard against concurrent invocations overwriting each other
       const requestId = ++loadRequestIdRef.current;
@@ -245,6 +254,24 @@ export default function DashboardPage() {
       await loadTailoredResumes();
     } catch (err) {
       console.error('Failed to delete resume:', err);
+    }
+  };
+
+  /**
+   * Make THIS resume the master, atomically demoting whichever CV was
+   * master before. Single-master model — exactly one master at any moment.
+   * Reload the list afterwards so the big "M" card + non-master grid swap
+   * cleanly to reflect the new state.
+   */
+  const handleSetAsMaster = async (e: React.MouseEvent, resumeId: string) => {
+    e.stopPropagation();
+    try {
+      await setResumeAsMaster(resumeId);
+      // Sync the localStorage pointer so the reload doesn't fight the change.
+      localStorage.setItem('master_resume_id', resumeId);
+      await loadTailoredResumes();
+    } catch (err) {
+      console.error('Failed to set resume as master:', err);
     }
   };
 
@@ -399,89 +426,21 @@ export default function DashboardPage() {
                 onChooseUpload={handleChooseUpload}
                 onChooseWizard={handleChooseWizard}
               />
-              <ResumeUploadDialog
-                open={isUploadDialogOpen}
-                onOpenChange={setIsUploadDialogOpen}
-                onUploadComplete={handleUploadComplete}
-                trigger={
-                  <button type="button" className="hidden" tabIndex={-1} aria-hidden="true" />
-                }
-              />
+              {/* ResumeUploadDialog is mounted globally at the grid level
+                  (below) so both the initialize flow and the "Add master
+                  CV" card can share one instance and one open/close state. */}
             </>
           )
-        ) : (
-          // Master Resume Exists
-          <Card
-            variant="interactive"
-            className="aspect-square h-full"
-            onClick={() => router.push(`/resumes/${masterResumeId}`)}
-          >
-            <div className="flex-1 flex flex-col h-full">
-              <div className="flex justify-between items-start mb-6">
-                <div className="w-16 h-16 border-2 border-black bg-blue-700 text-white flex items-center justify-center">
-                  <span className="font-mono font-bold text-lg">M</span>
-                </div>
-                <div className="flex gap-1">
-                  {(processingStatus === 'failed' || processingStatus === 'processing') && (
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 hover:bg-blue-100 hover:text-blue-700 z-10 rounded-none relative"
-                        onClick={handleRetryProcessing}
-                        disabled={isRetrying}
-                        aria-label={t('dashboard.retryProcessing')}
-                        title={t('dashboard.retryProcessing')}
-                      >
-                        {isRetrying ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <RefreshCw className="w-4 h-4" />
-                        )}
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <CardTitle className="text-lg group-hover:text-primary">
-                {t('dashboard.masterResume')}
-              </CardTitle>
-
-              <div
-                className={`text-xs font-mono mt-auto pt-4 flex flex-col gap-2 uppercase ${getStatusDisplay().color}`}
-              >
-                <div className="flex items-center gap-1">
-                  {getStatusDisplay().icon}
-                  {t('dashboard.statusLine', { status: getStatusDisplay().text })}
-                </div>
-                {(processingStatus === 'failed' || processingStatus === 'processing') && (
-                  <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 rounded-none border-black"
-                      onClick={handleRetryProcessing}
-                      disabled={isRetrying}
-                    >
-                      {isRetrying
-                        ? t('dashboard.retryingProcessing')
-                        : t('dashboard.retryProcessing')}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="text-xs h-7 rounded-none border-red-600 text-red-600 hover:bg-red-50"
-                      onClick={handleDeleteAndReupload}
-                    >
-                      {t('dashboard.deleteAndReupload')}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </Card>
-        )}
+        ) : // Master resume EXISTS — no special big card any more. Every
+        // resume (including the master) appears in the grid below with
+        // uniform sizing; the current master just wears a MASTER badge.
+        // This makes "Set as master" feel like the badge moves between
+        // cards, rather than cards teleporting to a special slot.
+        //
+        // The failed/processing retry actions that used to live on this
+        // big card still live on the resume detail page (/resumes/{id})
+        // where they're just as reachable.
+        null}
 
         {/* 2. Tailored Resumes */}
         {tailoredResumes.map((resume) => {
@@ -503,9 +462,45 @@ export default function DashboardPage() {
                   >
                     <span className="font-mono font-bold">{getMonogram(title)}</span>
                   </div>
-                  <span className="font-mono text-xs text-steel-grey uppercase">
-                    {resume.processing_status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {/* Single master control per card.
+                        - If THIS resume is currently the master → a locked
+                          MASTER badge (no action needed; already active).
+                        - Otherwise → a "Set as master" button that swaps
+                          the master atomically (backend does demote-then-
+                          promote in one transaction).
+                        Exactly one resume is master at any moment. */}
+                    {resume.is_master ? (
+                      <span
+                        className="px-2 py-0.5 border border-blue-700 bg-blue-700 text-white font-mono text-[10px] uppercase tracking-wider"
+                        title="This CV is the master used for tailoring new JDs"
+                      >
+                        Master
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => handleSetAsMaster(e, resume.resume_id)}
+                        title="Use this CV as master for tailoring new JDs"
+                        aria-label="Set as master"
+                        className="px-2 py-0.5 border border-steel-grey text-steel-grey font-mono text-[10px] uppercase tracking-wider hover:border-blue-700 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                      >
+                        Set as master
+                      </button>
+                    )}
+                    {/* Only surface status when it's NOT the boring "ready" —
+                        every finished card would otherwise carry a redundant
+                        READY label. Failed/processing/pending signal action. */}
+                    {resume.processing_status !== 'ready' && (
+                      <span
+                        className={`font-mono text-xs uppercase ${
+                          resume.processing_status === 'failed' ? 'text-red-600' : 'text-steel-grey'
+                        }`}
+                      >
+                        {resume.processing_status}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <CardTitle className="text-lg">
                   <span className="block font-serif text-base font-bold leading-tight mb-1 w-full line-clamp-2">
@@ -538,6 +533,28 @@ export default function DashboardPage() {
           </div>
         </Card>
 
+        {/* 3b. Upload another master CV — only visible once at least one
+             master already exists (when none exists, the top-left card is
+             the initialization button and this would be redundant).
+             Every upload now becomes a master by default (see
+             create_resume_atomic_master), so this reuses the same upload
+             dialog the initialization flow uses — the new upload just lands
+             in the master pool as an additional starred card. */}
+        {masterResumeId && (
+          <Card className="aspect-square h-full" variant="default">
+            <div className="flex-1 flex flex-col items-center justify-center text-center h-full">
+              <Button
+                onClick={() => setIsUploadDialogOpen(true)}
+                className="w-20 h-20 bg-yellow-500 text-white border-2 border-black shadow-sw-default hover:bg-yellow-600 hover:translate-y-[2px] hover:translate-x-[2px] hover:shadow-none transition-all rounded-none"
+                aria-label="Upload another master CV"
+              >
+                <Star className="w-8 h-8" fill="currentColor" />
+              </Button>
+              <p className="text-xs font-mono mt-4 uppercase text-yellow-700">Add master CV</p>
+            </div>
+          </Card>
+        )}
+
         {/* 4. Fillers */}
         {Array.from({ length: fillerCount }).map((_, index) => (
           <Card
@@ -566,6 +583,19 @@ export default function DashboardPage() {
           cancelLabel={t('confirmations.keepResumeCancelLabel')}
           onConfirm={confirmDeleteAndReupload}
           variant="danger"
+        />
+
+        {/* Global upload dialog — mounted once at the grid level so it can
+            be opened by both the initialize-master flow (when no master
+            exists) and the "Add master CV" card (when at least one exists).
+            Previously this was nested inside the !masterResumeId branch,
+            which meant the card in the "master exists" state had nothing
+            to open. */}
+        <ResumeUploadDialog
+          open={isUploadDialogOpen}
+          onOpenChange={setIsUploadDialogOpen}
+          onUploadComplete={handleUploadComplete}
+          trigger={<button type="button" className="hidden" tabIndex={-1} aria-hidden="true" />}
         />
       </SwissGrid>
     </div>

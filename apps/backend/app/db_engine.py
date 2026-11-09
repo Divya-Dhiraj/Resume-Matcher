@@ -69,3 +69,10 @@ def init_models_sync(engine: Engine) -> None:
         columns = conn.exec_driver_sql("PRAGMA table_info(resumes)").mappings().all()
         if columns and "interview_prep" not in {column["name"] for column in columns}:
             conn.exec_driver_sql("ALTER TABLE resumes ADD COLUMN interview_prep TEXT")
+
+        # Multi-master migration: this fork removed the single-master unique
+        # index (see models.py). Drop it from any DB that still has it so
+        # inserting a second master no longer raises IntegrityError. Safe to
+        # run on every startup — DROP INDEX IF EXISTS is idempotent, and the
+        # new non-unique helper index gets (re)created by create_all above.
+        conn.exec_driver_sql("DROP INDEX IF EXISTS ux_resumes_single_master")

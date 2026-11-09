@@ -9,6 +9,7 @@ import { getSortedSections } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DescriptionList } from './description-list';
 import { GroupedSkillsList } from './grouped-skills-list';
+import { ExtraBlocksList } from './extra-blocks-list';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/modern.module.css';
 
@@ -413,6 +414,8 @@ const AdditionalSection: React.FC<{
             <span>{awards.join(', ')}</span>
           </div>
         )}
+        {/* Extra user-defined blocks appended in the same visual style. */}
+        <ExtraBlocksList blocks={additional.extraBlocks} labelWidthClass="w-32" />
       </div>
     </div>
   );

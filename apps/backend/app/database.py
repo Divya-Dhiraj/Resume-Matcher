@@ -255,27 +255,19 @@ class Database:
         title: str | None = None,
         interview_prep: str | None = None,
     ) -> dict[str, Any]:
-        """Create a new resume with atomic master assignment.
+        """Create a new resume; flag it as master only if no master exists yet.
 
-        Uses an asyncio.Lock to prevent race conditions when multiple uploads
-        happen concurrently and both try to become master.
+        Simpler UX rule: at most one resume is the master at any moment.
+        Uploading a fresh CV does NOT hijack the current master — it lands
+        as a regular (non-master) resume, and the user chooses which CV is
+        the master via the "Set as master" button. Exception: when no
+        master exists yet, the very first upload boots the pool by
+        becoming master automatically so the user isn't stranded with
+        zero masters.
         """
         async with self._master_resume_lock:
             current_master = await self.get_master_resume()
             is_master = current_master is None
-
-            # Recovery: if the current master is stuck failed/processing, demote
-            # it so this upload can become the new master.
-            if current_master and current_master.get("processing_status") in (
-                "failed",
-                "processing",
-            ):
-                async with self._session() as session:
-                    row = await session.get(Resume, current_master["resume_id"])
-                    if row is not None:
-                        row.is_master = False
-                        await session.commit()
-                is_master = True
 
             return await self.create_resume(
                 content=content,
@@ -298,13 +290,43 @@ class Database:
             return self._resume_to_dict(row) if row else None
 
     async def get_master_resume(self) -> dict[str, Any] | None:
-        """Get the master resume if exists."""
+        """Return the FIRST master resume, if any.
+
+        Kept for backward compat with callers written before this fork
+        allowed multiple masters. New code that needs to enumerate should
+        use `list_master_resumes`; callers that need one specific master
+        by user choice should pass an explicit resume_id.
+        """
         async with self._session() as session:
             result = await session.execute(
                 select(Resume).where(Resume.is_master.is_(True))
             )
             row = result.scalars().first()
             return self._resume_to_dict(row) if row else None
+
+    async def list_master_resumes(self) -> list[dict[str, Any]]:
+        """Return every master resume, oldest first — the multi-master
+        equivalent of get_master_resume."""
+        async with self._session() as session:
+            result = await session.execute(
+                select(Resume)
+                .where(Resume.is_master.is_(True))
+                .order_by(Resume.created_at)
+            )
+            return [self._resume_to_dict(row) for row in result.scalars().all()]
+
+    async def set_master_flag(self, resume_id: str, is_master: bool) -> bool:
+        """Promote a resume to master or demote it back. Returns False if the
+        resume doesn't exist. Unlike `set_master_resume` this does NOT touch
+        any other rows — sibling masters stay masters."""
+        async with self._session() as session:
+            row = await session.get(Resume, resume_id)
+            if row is None:
+                return False
+            row.is_master = bool(is_master)
+            row.updated_at = _now()
+            await session.commit()
+            return True
 
     async def update_resume(self, resume_id: str, updates: dict[str, Any]) -> dict[str, Any]:
         """Update resume by ID.

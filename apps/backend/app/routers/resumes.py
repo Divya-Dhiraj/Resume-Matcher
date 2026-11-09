@@ -1769,6 +1769,21 @@ async def update_title(resume_id: str, request: UpdateTitleRequest) -> dict:
     return {"message": "Title updated successfully"}
 
 
+@router.post("/{resume_id}/set-as-master")
+async def set_as_master(resume_id: str) -> dict:
+    """Make this resume the master, atomically demoting any previous master.
+
+    Single-master model: at most one resume is master at any moment.
+    Uses db.set_master_resume which does demote-then-promote in one
+    transaction so the transient state (0 masters, 2 masters) never
+    surfaces to other readers.
+    """
+    ok = await db.set_master_resume(resume_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    return {"message": "Resume set as master", "resume_id": resume_id, "is_master": True}
+
+
 @router.post(
     "/{resume_id}/generate-cover-letter", response_model=GenerateContentResponse
 )

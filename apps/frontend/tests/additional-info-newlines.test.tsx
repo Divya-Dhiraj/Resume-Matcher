@@ -12,20 +12,22 @@ vi.mock('@/lib/i18n', () => ({
 }));
 
 describe('AdditionalForm newline handling (issue #763)', () => {
+  // technicalSkills now renders via SkillGroupsEditor (grouped blocks with
+  // blur-commit semantics), so issue #763's "trailing-newline survives" guard
+  // is pinned against `languages`, which is still a plain Textarea driven by
+  // the same handleArrayChange/formatArray helpers from additional-form.tsx.
+
   it('preserves a trailing blank line so Enter can create a new item', () => {
     const onChange = vi.fn<(data: AdditionalInfo) => void>();
-    const data: AdditionalInfo = { technicalSkills: ['React'] };
+    const data: AdditionalInfo = { languages: ['English'] };
 
     render(<AdditionalForm data={data} onChange={onChange} />);
 
-    const textarea = screen.getByLabelText('resume.additional.technicalSkills');
-    // Simulate pressing Enter at the end of "React": the value now has a trailing
-    // newline (an empty line). Before the fix this empty line was filtered out on
-    // every keystroke, so the newline never survived a re-render.
-    fireEvent.change(textarea, { target: { value: 'React\n' } });
+    const textarea = screen.getByLabelText('resume.sections.languages');
+    fireEvent.change(textarea, { target: { value: 'English\n' } });
 
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0][0].technicalSkills).toEqual(['React', '']);
+    expect(onChange.mock.calls[0][0].languages).toEqual(['English', '']);
   });
 
   it('preserves a blank line between two items', () => {
@@ -34,10 +36,10 @@ describe('AdditionalForm newline handling (issue #763)', () => {
 
     render(<AdditionalForm data={data} onChange={onChange} />);
 
-    const textarea = screen.getByLabelText('resume.additional.technicalSkills');
-    fireEvent.change(textarea, { target: { value: 'React\n\nTypeScript' } });
+    const textarea = screen.getByLabelText('resume.sections.languages');
+    fireEvent.change(textarea, { target: { value: 'English\n\nGerman' } });
 
-    expect(onChange.mock.calls[0][0].technicalSkills).toEqual(['React', '', 'TypeScript']);
+    expect(onChange.mock.calls[0][0].languages).toEqual(['English', '', 'German']);
   });
 });
 

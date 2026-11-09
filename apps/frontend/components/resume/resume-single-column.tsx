@@ -10,6 +10,7 @@ import { formatDateRange } from '@/lib/utils';
 import { DynamicResumeSection } from './dynamic-resume-section';
 import { DescriptionList } from './description-list';
 import { GroupedSkillsList } from './grouped-skills-list';
+import { ExtraBlocksList } from './extra-blocks-list';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/swiss-single.module.css';
 
@@ -411,6 +412,10 @@ const AdditionalSection: React.FC<{
             <span>{awards.join(', ')}</span>
           </div>
         )}
+        {/* User-defined extra blocks appended below the four built-in fields.
+            Same label-width so headings align. Empty blocks are skipped inside
+            ExtraBlocksList. */}
+        <ExtraBlocksList blocks={additional.extraBlocks} labelWidthClass="w-32" />
       </div>
     </div>
   );

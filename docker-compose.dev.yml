@@ -52,8 +52,10 @@ services:
         BACKEND_PID=$$!
         echo "[dev] starting frontend (next dev --turbopack) on :3000"
         cd /app/frontend
-        # `exec` so the container's PID 1 is next-dev — clean signal handling.
-        exec npx next dev --turbopack --hostname 0.0.0.0 --port 3000
+        # `exec` so the container's PID 1 becomes next-dev — clean signal
+        # handling. Uses npm/npx from the image (Dockerfile now installs both)
+        # and node_modules from the image's copy (anonymous volume below).
+        exec npm run dev -- --hostname 0.0.0.0 --port 3000
     ports:
       # Backend port also exposed so you can hit /api/v1/* directly if useful,
       # bypassing Next.js's proxy layer while debugging.

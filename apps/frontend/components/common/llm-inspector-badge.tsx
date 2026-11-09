@@ -219,17 +219,13 @@ export const LlmInspectorBadge: React.FC = () => {
       <div className="flex-1 overflow-auto p-2 space-y-2 bg-paper-tint">
         {filtered.length === 0 && (
           <div className="p-6 text-center font-mono text-[10px] text-steel-grey">
-            No LLM calls captured yet. Trigger anything that runs the model —
-            upload a resume, run tailoring, generate a cover letter — and calls
-            will appear here.
+            No LLM calls captured yet. Trigger anything that runs the model — upload a resume, run
+            tailoring, generate a cover letter — and calls will appear here.
           </div>
         )}
         {filtered.map((call) => {
           const isOpen = expanded.has(call.id);
-          const promptChars = call.messages.reduce(
-            (n, m) => n + (m.content?.length ?? 0),
-            0
-          );
+          const promptChars = call.messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
           return (
             <div key={call.id} className="border border-black bg-white">
               <button

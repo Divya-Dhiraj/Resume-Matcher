@@ -311,6 +311,20 @@ export async function renameResume(resumeId: string, title: string): Promise<voi
   }
 }
 
+/**
+ * Make this resume the master, atomically demoting whichever resume was
+ * master before. Single-master model — exactly one resume is master at any
+ * moment. Backed by POST /resumes/{id}/set-as-master which uses a
+ * demote-then-promote transaction under the hood.
+ */
+export async function setResumeAsMaster(resumeId: string): Promise<void> {
+  const res = await apiPost(`/resumes/${encodeURIComponent(resumeId)}/set-as-master`, {});
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to set resume as master (status ${res.status}): ${text}`);
+  }
+}
+
 /** Downloads cover letter as PDF */
 export function getCoverLetterPdfUrl(
   resumeId: string,

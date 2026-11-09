@@ -152,6 +152,11 @@ export const normalizeResumeForSave = (resume: ResumeData): ResumeData => {
     education: (Array.isArray(resume.education) ? resume.education : []).filter(isObjectRecord),
     additional: resume.additional
       ? {
+          // Spread first so newer fields (labels, extraBlocks) survive — the
+          // explicit assignments below only overwrite the four legacy
+          // string-list fields with their normalized forms. Without the
+          // spread being the base of this object, any field not listed here
+          // gets silently dropped on every save.
           ...resume.additional,
           technicalSkills: normalizeStringList(resume.additional.technicalSkills),
           languages: normalizeStringList(resume.additional.languages),

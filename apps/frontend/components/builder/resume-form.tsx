@@ -32,6 +32,7 @@ import { SectionHeader } from './section-header';
 import { GenericTextForm } from './forms/generic-text-form';
 import { GenericItemForm } from './forms/generic-item-form';
 import { GenericListForm } from './forms/generic-list-form';
+import { GroupedBlocksEditor } from './forms/grouped-blocks-editor';
 import { AddSectionButton } from './add-section-dialog';
 import { DraggableSectionWrapper } from './draggable-section-wrapper';
 import {
@@ -46,6 +47,11 @@ interface ResumeFormProps {
   resumeData: ResumeData;
   onUpdate: (data: ResumeData) => void;
 }
+
+// Hoisted outside the component so `react-hooks/purity` doesn't flag the
+// Date.now() call: generating a fresh unique block id when the user clicks
+// "Add section" is a side effect of that click, not render-derived state.
+const newBlockId = (): number => Date.now();
 
 export const ResumeForm: React.FC<ResumeFormProps> = ({ resumeData, onUpdate }) => {
   const { t } = useTranslations();
@@ -79,6 +85,11 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({ resumeData, onUpdate }) 
       text: sectionType === 'text' ? '' : undefined,
       items: sectionType === 'itemList' ? [] : undefined,
       strings: sectionType === 'stringList' ? [] : undefined,
+      // groupedList starts with one empty block so the user has something to
+      // fill in immediately — a totally empty section renders as nothing and
+      // is easy to miss in the tree.
+      blocks:
+        sectionType === 'groupedList' ? [{ id: newBlockId(), label: '', items: [] }] : undefined,
     };
 
     onUpdate({
@@ -346,6 +357,14 @@ export const ResumeForm: React.FC<ResumeFormProps> = ({ resumeData, onUpdate }) 
               onChange={(strings) => updateCustomSection({ strings })}
               label={t('builder.customSections.itemsLabel')}
               placeholder={t('builder.customSections.itemsPlaceholder')}
+            />
+          );
+
+        case 'groupedList':
+          return (
+            <GroupedBlocksEditor
+              value={customSection?.blocks || []}
+              onChange={(blocks) => updateCustomSection({ blocks })}
             />
           );
 

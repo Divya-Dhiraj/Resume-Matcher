@@ -422,6 +422,23 @@ export const ResumeModernTwoColumn: React.FC<ResumeModernTwoColumnProps> = ({
             </div>
           )}
 
+          {/* Extra user-defined blocks — each as its own accented sidebar section. */}
+          {isSectionVisible('additional') &&
+            (additional?.extraBlocks ?? [])
+              .filter((b) => b.label?.trim() || (b.items?.length ?? 0) > 0)
+              .map((block, idx) => (
+                <div key={block.id ?? idx} className={baseStyles['resume-section']}>
+                  {block.label?.trim() && (
+                    <h3
+                      className={`${baseStyles['resume-section-title-sm']} text-[var(--resume-accent-primary)]`}
+                    >
+                      {block.label}
+                    </h3>
+                  )}
+                  <p className={baseStyles['resume-text-xs']}>{(block.items ?? []).join(' • ')}</p>
+                </div>
+              ))}
+
           {/* Links Section */}
           {personalInfo &&
             (personalInfo.website || personalInfo.linkedin || personalInfo.github) && (

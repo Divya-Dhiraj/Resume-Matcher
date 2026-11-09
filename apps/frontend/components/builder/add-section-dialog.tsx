@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Plus, FileText, List, ListOrdered } from 'lucide-react';
+import { Plus, FileText, List, ListOrdered, Layers } from 'lucide-react';
 import type { SectionType } from '@/components/dashboard/resume-component';
 import { useTranslations } from '@/lib/i18n';
 
@@ -78,6 +78,16 @@ export const AddSectionDialog: React.FC<AddSectionDialogProps> = ({
       label: t('builder.customSections.sectionTypes.stringListLabel'),
       icon: <List className="w-5 h-5" />,
       description: t('builder.customSections.sectionTypes.stringListDescription'),
+    },
+    {
+      // Hard-coded English strings for now — the i18n key set doesn't cover
+      // this type yet, and shipping the option without any label would be
+      // worse than a temporarily untranslated one.
+      type: 'groupedList',
+      label: 'Grouped list',
+      icon: <Layers className="w-5 h-5" />,
+      description:
+        'Multi-block layout like Skills & Awards — add blocks with their own headings and item lists.',
     },
   ];
 

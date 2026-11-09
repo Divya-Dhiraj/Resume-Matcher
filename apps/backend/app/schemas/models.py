@@ -134,6 +134,31 @@ class SectionType(str, Enum):
     TEXT = "text"  # Single text block (like summary)
     ITEM_LIST = "itemList"  # Array of items with fields (like experience)
     STRING_LIST = "stringList"  # Array of strings (like skills)
+    # Multi-block layout like Skills & Awards: several labeled sub-blocks, each
+    # with its own heading + string list. Lets users create sections shaped
+    # like the built-in Additional section (Technical Skills / Languages /
+    # Certifications / Awards) for anything else — Publications by year,
+    # Volunteering by role, Talks by venue, etc. Editable per block.
+    GROUPED_LIST = "groupedList"
+
+
+class GroupedBlock(BaseModel):
+    """One labeled sub-block inside a groupedList section.
+
+    `items` are the free-form entries under this heading, one per line — the
+    same shape the built-in Additional string-list fields use, so the same
+    "Category: item, item" convention still renders as bolded categories via
+    the frontend GroupedSkillsList component when present.
+    """
+
+    id: int = 0
+    label: str = ""
+    items: list[str] = Field(default_factory=list)
+
+    @field_validator("items", mode="before")
+    @classmethod
+    def _normalize_items(cls, value: Any) -> list[str]:
+        return _coerce_string_list(value)
 
 
 # Resume Data Models (matching frontend types in resume-component.tsx)
@@ -229,12 +254,35 @@ class Project(BaseModel):
 
 
 class AdditionalInfo(BaseModel):
-    """Additional information section."""
+    """Additional information section.
+
+    `technicalSkills` stays a `list[str]` for backward compatibility with every
+    consumer (improver, refiner, ATS scoring, DB rows). Grouped skills are
+    encoded as `"Category: skill1, skill2, skill3"` strings — the same shape
+    Divya's master CV already uses — so an entry containing a colon renders as
+    a labeled group and one without renders as a plain bare skill. Splitting a
+    group's inline items must respect parentheses so `"SQL (window functions,
+    CTEs)"` stays one skill; the frontend does that split at render/edit time.
+
+    `labels` holds per-resume overrides for the sub-section headings the
+    templates render inside this section (Technical Skills, Languages,
+    Certifications, Awards). Keys match the field names above; a missing key
+    means "use the default heading from i18n". This lets a user rename e.g.
+    "Certifications" to "Trainings & Courses" without touching translations.
+    Stored as a plain dict so LLM parses and legacy resumes both round-trip.
+    """
 
     technicalSkills: list[str] = Field(default_factory=list)
     languages: list[str] = Field(default_factory=list)
     certificationsTraining: list[str] = Field(default_factory=list)
     awards: list[str] = Field(default_factory=list)
+    labels: dict[str, str] = Field(default_factory=dict)
+    # Extra user-defined blocks appended below the four built-in ones. Same
+    # shape as CustomSection.blocks for groupedList, so a shared renderer +
+    # editor works for both. Users use this to add sub-sections like
+    # "Publications" or "Volunteering" INSIDE Skills & Awards without having
+    # to create a whole new top-level section.
+    extraBlocks: list[GroupedBlock] = Field(default_factory=list)
 
     @field_validator(
         "technicalSkills",
@@ -299,6 +347,7 @@ class CustomSection(BaseModel):
     items: list[CustomSectionItem] | None = None  # For ITEM_LIST
     strings: list[str] | None = None  # For STRING_LIST
     text: str | None = None  # For TEXT
+    blocks: list[GroupedBlock] | None = None  # For GROUPED_LIST
 
     @field_validator("items", mode="before")
     @classmethod

@@ -365,18 +365,26 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                   }}
                 >
                   <optgroup label="Sans-serif">
-                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'sans-serif').map(
-                      (font) => (
-                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
-                          {getFontLabel(font)}
-                        </option>
-                      )
-                    )}
+                    {NAMED_FONT_FAMILIES.filter(
+                      (f) => FONT_FAMILY_META[f].bucket === 'sans-serif'
+                    ).map((font) => (
+                      <option
+                        key={font}
+                        value={font}
+                        style={{ fontFamily: FONT_FAMILY_META[font].preview }}
+                      >
+                        {getFontLabel(font)}
+                      </option>
+                    ))}
                   </optgroup>
                   <optgroup label="Serif">
                     {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'serif').map(
                       (font) => (
-                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                        <option
+                          key={font}
+                          value={font}
+                          style={{ fontFamily: FONT_FAMILY_META[font].preview }}
+                        >
                           {getFontLabel(font)}
                         </option>
                       )
@@ -385,7 +393,11 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                   <optgroup label="Monospace">
                     {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'mono').map(
                       (font) => (
-                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                        <option
+                          key={font}
+                          value={font}
+                          style={{ fontFamily: FONT_FAMILY_META[font].preview }}
+                        >
                           {getFontLabel(font)}
                         </option>
                       )
@@ -407,18 +419,26 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                   }}
                 >
                   <optgroup label="Sans-serif">
-                    {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'sans-serif').map(
-                      (font) => (
-                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
-                          {getFontLabel(font)}
-                        </option>
-                      )
-                    )}
+                    {NAMED_FONT_FAMILIES.filter(
+                      (f) => FONT_FAMILY_META[f].bucket === 'sans-serif'
+                    ).map((font) => (
+                      <option
+                        key={font}
+                        value={font}
+                        style={{ fontFamily: FONT_FAMILY_META[font].preview }}
+                      >
+                        {getFontLabel(font)}
+                      </option>
+                    ))}
                   </optgroup>
                   <optgroup label="Serif">
                     {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'serif').map(
                       (font) => (
-                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                        <option
+                          key={font}
+                          value={font}
+                          style={{ fontFamily: FONT_FAMILY_META[font].preview }}
+                        >
                           {getFontLabel(font)}
                         </option>
                       )
@@ -427,7 +447,11 @@ export const FormattingControls: React.FC<FormattingControlsProps> = ({ settings
                   <optgroup label="Monospace">
                     {NAMED_FONT_FAMILIES.filter((f) => FONT_FAMILY_META[f].bucket === 'mono').map(
                       (font) => (
-                        <option key={font} value={font} style={{ fontFamily: FONT_FAMILY_META[font].preview }}>
+                        <option
+                          key={font}
+                          value={font}
+                          style={{ fontFamily: FONT_FAMILY_META[font].preview }}
+                        >
                           {getFontLabel(font)}
                         </option>
                       )

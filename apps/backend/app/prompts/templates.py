@@ -17,7 +17,17 @@ def get_language_name(code: str) -> str:
     return LANGUAGE_NAMES.get(code, "English")
 
 
-# Schema with example values - used for prompts to show LLM expected format
+# Schema with example values - used for prompts to show LLM expected format.
+#
+# FIELD ORDER MATTERS: personalInfo → summary → additional → education →
+# customSections → workExperience → personalProjects. This front-loads the
+# short, high-value fields (skills, languages, certs, degrees, publications)
+# so a mid-tier local model that starts to lose the schema after emitting
+# several long workExperience entries still gets skills/languages out first.
+# Previous order (workExperience before additional) meant a dense CV with 5+
+# jobs would emit workExperience + education, then the model would treat
+# the JSON as done and close it — leaving additional empty because the
+# closing brace parsed as a syntactically-valid but incomplete object.
 RESUME_SCHEMA_EXAMPLE = """{
   "personalInfo": {
     "name": "John Doe",
@@ -30,42 +40,6 @@ RESUME_SCHEMA_EXAMPLE = """{
     "github": "github.com/johndoe"
   },
   "summary": "Experienced software engineer with 5+ years...",
-  "workExperience": [
-    {
-      "id": 1,
-      "title": "Senior Software Engineer",
-      "company": "Tech Corp",
-      "location": "San Francisco, CA",
-      "years": "Jan 2020 - Present",
-      "description": [
-        "Led development of microservices architecture",
-        "Improved system performance by 40%"
-      ],
-      "descriptionStyles": ["bullet", "bullet"]
-    }
-  ],
-  "education": [
-    {
-      "id": 1,
-      "institution": "University of California",
-      "degree": "B.S. Computer Science",
-      "years": "2014 - 2018",
-      "description": "Graduated with honors"
-    }
-  ],
-  "personalProjects": [
-    {
-      "id": 1,
-      "name": "Open Source Tool",
-      "role": "Creator & Maintainer",
-      "years": "Mar 2021 - Present",
-      "description": [
-        "Built CLI tool with 1000+ GitHub stars",
-        "Used by 50+ companies worldwide"
-      ],
-      "descriptionStyles": ["bullet", "bullet"]
-    }
-  ],
   "additional": {
     "technicalSkills": [
       "Programming: Python, JavaScript",
@@ -75,6 +49,15 @@ RESUME_SCHEMA_EXAMPLE = """{
     "certificationsTraining": ["AWS Solutions Architect"],
     "awards": ["Employee of the Year 2022"]
   },
+  "education": [
+    {
+      "id": 1,
+      "institution": "University of California",
+      "degree": "B.S. Computer Science",
+      "years": "2014 - 2018",
+      "description": "Graduated with honors"
+    }
+  ],
   "customSections": {
     "publications": {
       "sectionType": "itemList",
@@ -93,7 +76,34 @@ RESUME_SCHEMA_EXAMPLE = """{
       "sectionType": "text",
       "text": "Description of volunteer activities..."
     }
-  }
+  },
+  "workExperience": [
+    {
+      "id": 1,
+      "title": "Senior Software Engineer",
+      "company": "Tech Corp",
+      "location": "San Francisco, CA",
+      "years": "Jan 2020 - Present",
+      "description": [
+        "Led development of microservices architecture",
+        "Improved system performance by 40%"
+      ],
+      "descriptionStyles": ["bullet", "bullet"]
+    }
+  ],
+  "personalProjects": [
+    {
+      "id": 1,
+      "name": "Open Source Tool",
+      "role": "Creator & Maintainer",
+      "years": "Mar 2021 - Present",
+      "description": [
+        "Built CLI tool with 1000+ GitHub stars",
+        "Used by 50+ companies worldwide"
+      ],
+      "descriptionStyles": ["bullet", "bullet"]
+    }
+  ]
 }"""
 
 # Schema for improve prompts - excludes personalInfo (preserved from original)
@@ -167,6 +177,15 @@ IMPROVE_SCHEMA_EXAMPLE = """{
 
 PARSE_RESUME_PROMPT = """Parse this resume into JSON. Output ONLY the JSON object, no other text.
 
+CRITICAL — your output MUST contain ALL of these top-level fields, in this
+exact order, EVEN IF SOME ARE EMPTY: personalInfo, summary, additional,
+education, customSections, workExperience, personalProjects. Emit `additional`
+BEFORE workExperience so the (usually short) skills, languages, certifications
+and awards fields don't get lost when a dense experience section fills your
+output budget. Never close the top-level object before all seven fields have
+been written — use "" for missing strings, [] for missing arrays, and {{}}
+(an empty JSON object) for missing objects.
+
 Map content to standard sections when possible. For non-standard sections (like Publications, Volunteer Work, Research, Hobbies), add them to customSections with an appropriate type.
 
 Example output format:
@@ -211,6 +230,21 @@ Example format:
 Extract numeric years (e.g., "5+ years" → 5) and infer seniority level.
 Set "company" to the hiring company name and "role" to the job title exactly as
 written in the posting; use an empty string for either if it is not stated.
+
+LANGUAGE NORMALIZATION — CRITICAL:
+The job description may be written in ANY language (German, French, Spanish,
+Portuguese, Dutch, Italian, Japanese, Chinese, etc.). Regardless of the source
+language, output EVERY field in ENGLISH so downstream keyword matching against
+an English resume works:
+  - Translate skills / responsibilities / requirements to their standard
+    English equivalents: "ETL-Prozesse" → "ETL processes", "Cloud-Architektur"
+    → "Cloud architecture", "Erfahrung mit Datenbanken" → "Experience with
+    databases". Keep proper nouns and product names untouched (Microsoft
+    Azure, Power BI, SAP S/4HANA, Kubernetes — all as-is).
+  - "company" and "role" stay in the ORIGINAL language exactly as written on
+    the posting (a German role stays German so it displays correctly).
+  - Skill acronyms stay in whichever language the industry uses them: SQL,
+    ETL, KPI, DAX are language-agnostic and pass through unchanged.
 
 Job description:
 {job_description}"""
@@ -507,6 +541,12 @@ Rules:
 4. Do not include skills unrelated to the JD.
 5. Do not include certifications.
 6. Generate reasons in {output_language}.
+7. The JD may be in ANY language (German, French, Spanish, etc.). Emit every
+   "skill" name in ENGLISH so matching against the (English) resume works —
+   e.g., "ETL-Prozesse" → "ETL processes", "Cloud-Architektur" →
+   "Cloud architecture". Proper product names (Microsoft Azure, Power BI,
+   SAP S/4HANA) pass through unchanged; language-agnostic acronyms (SQL,
+   ETL, KPI, DAX) pass through unchanged.
 
 Existing resume skills:
 {existing_skills}
@@ -546,6 +586,7 @@ RULES:
 10. Exception to rule 2: you may add a skill only if it appears in the verified skill targets below
 11. By DEFAULT, scan the summary and every work, project, and education description for content that already demonstrates a job-description keyword or skill, and reframe that text using the job description's terminology where it is not already phrased that way (per rule 9, leave content that already aligns well), while preserving the candidate's actual accomplishment. Do NOT add new work, metrics, or responsibilities; only restate existing content in the JD's language, and verify every reframe stays factually accurate.
 12. Preserve original capitalization, especially for proper nouns, technical terms (e.g., REST, API, AWS), and acronyms. Do not change the casing of words that were capitalized in the original.
+13. LANGUAGE — the JD may be in ANY language (German, French, Spanish, Portuguese, Dutch, etc.). Understand it in its original language, but write every `value` field of your changes in ENGLISH (or in the {output_language} requested above, if different from English) so it stays consistent with the rest of the resume. When rule 11 says "reframe using the JD's terminology", use the ENGLISH equivalent of the JD term — "ETL-Prozesse" becomes "ETL processes", "Datenbanken" becomes "databases". Proper product names and language-agnostic acronyms (Microsoft Azure, Power BI, SAP S/4HANA, SQL, ETL, KPI) pass through unchanged.
 
 PATHS you can target:
 - "summary" — the resume summary text

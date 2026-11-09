@@ -9,6 +9,7 @@ import { getSortedSections } from '@/lib/utils/section-helpers';
 import { formatDateRange } from '@/lib/utils';
 import { DescriptionList } from './description-list';
 import { GroupedSkillsList } from './grouped-skills-list';
+import { ExtraBlocksList } from './extra-blocks-list';
 import baseStyles from './styles/_base.module.css';
 import styles from './styles/latex.module.css';
 
@@ -368,6 +369,7 @@ const AdditionalSection: React.FC<{
         {line(mergedLabels.languages, languages)}
         {line(mergedLabels.certifications, certificationsTraining)}
         {line(mergedLabels.awards, awards)}
+        <ExtraBlocksList blocks={additional.extraBlocks} labelWidthClass="w-32" />
       </div>
     </div>
   );
@@ -392,6 +394,12 @@ const DynamicResumeSectionLatex: React.FC<{
         return Boolean(customSection.items?.length);
       case 'stringList':
         return Boolean(customSection.strings?.length);
+      case 'groupedList':
+        // Show the section as soon as ONE block exists (even empty), so a
+        // brand-new grouped-list section is visible in the preview before
+        // the user types content into it — matches DynamicResumeSection's
+        // permissive rule so behavior is consistent across templates.
+        return (customSection.blocks?.length ?? 0) > 0;
       default:
         return false;
     }
@@ -431,7 +439,34 @@ const DynamicResumeSectionLatex: React.FC<{
         </div>
       ) : null}
       {sectionMeta.sectionType === 'stringList' && customSection.strings?.length ? (
-        <div className={baseStyles['resume-text-sm']}>{customSection.strings.join(', ')}</div>
+        <div className={baseStyles['resume-text-sm']}>
+          <GroupedSkillsList
+            skills={customSection.strings}
+            layout="inline"
+            className="flex flex-col gap-0.5"
+          />
+        </div>
+      ) : null}
+      {sectionMeta.sectionType === 'groupedList' && customSection.blocks?.length ? (
+        <div className={`${baseStyles['resume-stack']} ${baseStyles['resume-text-sm']}`}>
+          {customSection.blocks
+            .filter((b) => b.label?.trim() || (b.items?.length ?? 0) > 0)
+            .map((block, idx) => (
+              <div key={block.id ?? idx} className="flex">
+                <span className="font-bold w-32 shrink-0">
+                  {block.label?.trim() || ''}
+                  {block.label?.trim() ? ':' : ''}
+                </span>
+                <div className="flex-1">
+                  <GroupedSkillsList
+                    skills={block.items ?? []}
+                    layout="inline"
+                    className="flex flex-col gap-0.5"
+                  />
+                </div>
+              </div>
+            ))}
+        </div>
       ) : null}
     </div>
   );

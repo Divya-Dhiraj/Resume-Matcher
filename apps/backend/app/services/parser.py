@@ -12,6 +12,7 @@ from app.llm import complete_json, get_llm_config, get_model_name, get_safe_max_
 from app.prompts import PARSE_RESUME_PROMPT
 from app.prompts.templates import RESUME_SCHEMA_EXAMPLE
 from app.schemas import ResumeData
+from app.services.multi_pass_parser import parse_multi_pass
 
 logger = logging.getLogger(__name__)
 
@@ -157,19 +158,43 @@ async def parse_resume_to_json(markdown_text: str) -> dict[str, Any]:
     if not markdown_text or not markdown_text.strip():
         raise ValueError("Resume content is empty after text extraction.")
 
-    prompt = PARSE_RESUME_PROMPT.format(
-        schema=RESUME_SCHEMA_EXAMPLE,
-        resume_text=markdown_text,
-    )
-
+    # Multi-pass parser (regex-split sections → focused per-section LLM calls
+    # in parallel) is the default. On dense master CVs it recovers skills,
+    # languages, and custom sections that the single-shot parser was dropping
+    # because a 14B local model would close the JSON early after emitting
+    # the long workExperience array. Falls back to the single-shot parser
+    # if anything unexpected happens — we'd rather ship the single-shot
+    # output than fail the whole upload.
     config = get_llm_config()
     model_name = get_model_name(config)
-    result = await complete_json(
-        prompt=prompt,
-        system_prompt="You are a JSON extraction engine. Output only valid JSON, no explanations.",
-        max_tokens=get_safe_max_tokens(model_name),
-        retries=3,
-    )
+
+    try:
+        result = await parse_multi_pass(markdown_text)
+        # Multi-pass returns a dict shaped like ResumeData; if it came back
+        # essentially empty (say every section extractor failed) fall through
+        # to the single-shot as a safety net so the user isn't stranded with
+        # a blank resume.
+        pi = result.get("personalInfo") or {}
+        looks_empty = (
+            not pi.get("name")
+            and not result.get("workExperience")
+            and not result.get("education")
+        )
+        if looks_empty:
+            logger.warning("multi_pass returned empty; falling back to single-shot")
+            raise RuntimeError("multi_pass_empty")
+    except Exception as exc:
+        logger.warning("multi_pass parser failed (%s); falling back to single-shot", exc)
+        prompt = PARSE_RESUME_PROMPT.format(
+            schema=RESUME_SCHEMA_EXAMPLE,
+            resume_text=markdown_text,
+        )
+        result = await complete_json(
+            prompt=prompt,
+            system_prompt="You are a JSON extraction engine. Output only valid JSON, no explanations.",
+            max_tokens=get_safe_max_tokens(model_name),
+            retries=3,
+        )
 
     # Patch dates: restore months the LLM may have dropped
     result = restore_dates_from_markdown(result, markdown_text)

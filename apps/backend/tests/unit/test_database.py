@@ -124,13 +124,21 @@ class TestMasterResume:
         second = await db.create_resume_atomic_master(content="second", processing_status="ready")
         assert second["is_master"] is False
 
-    async def test_atomic_recovers_when_master_stuck(self, db):
-        # Master stuck in "failed" → next upload is promoted to master.
+    async def test_atomic_upload_does_not_hijack_master(self, db):
+        # New UX rule: uploading never auto-steals the master flag, even if
+        # the current master is stuck. User chooses via "Set as master".
         first = await db.create_resume_atomic_master(content="first", processing_status="failed")
         assert first["is_master"] is True
         second = await db.create_resume_atomic_master(content="second", processing_status="ready")
-        assert second["is_master"] is True
-        assert (await db.get_master_resume())["resume_id"] == second["resume_id"]
+        assert second["is_master"] is False
+        assert (await db.get_master_resume())["resume_id"] == first["resume_id"]
+
+    async def test_set_master_flag_promotes_without_demoting_siblings(self, db):
+        first = await db.create_resume_atomic_master(content="first", processing_status="ready")
+        second = await db.create_resume_atomic_master(content="second", processing_status="ready")
+        assert await db.set_master_flag(second["resume_id"], True) is True
+        masters = {m["resume_id"] for m in await db.list_master_resumes()}
+        assert masters == {first["resume_id"], second["resume_id"]}
 
 
 class TestJobs:

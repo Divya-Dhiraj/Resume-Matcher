@@ -81,8 +81,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# Copy Node.js runtime from frontend builder for reproducible runtime behavior.
+# Copy Node.js runtime from the frontend builder. Also copy npm/npx and the
+# corepack directory so the dev-mode overlay (docker-compose.dev.yml) can run
+# `next dev` inside this same image without a separate dev Dockerfile. The
+# production runtime uses only `node server.js`, so the extra binaries are
+# unused there — they're just kept present to make dev mode drop-in.
 COPY --from=frontend-builder /usr/local/bin/node /usr/local/bin/node
+COPY --from=frontend-builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+# npm/npx are wrapper scripts installed alongside node in the node:22 image;
+# symlink them so PATH still resolves them.
+RUN ln -sf /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm && \
+    ln -sf /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
 
 # ============================================
 # Backend Setup
@@ -104,6 +113,15 @@ WORKDIR /app/frontend
 COPY --from=frontend-builder /app/frontend/.next/standalone ./
 COPY --from=frontend-builder /app/frontend/.next/static ./.next/static
 COPY --from=frontend-builder /app/frontend/public ./public
+# Also copy the full node_modules and package.json from the builder. The
+# production start.sh doesn't need these (it runs `node server.js` from the
+# standalone bundle which has its own deps), so this only costs image size
+# for dev-mode convenience. When docker-compose.dev.yml mounts the host's
+# ./apps/frontend over this directory, the anonymous volume on
+# /app/frontend/node_modules seeds from THIS copy — giving the container a
+# proper linux-arm64 node_modules independent of the host's darwin-arm64 one.
+COPY --from=frontend-builder /app/frontend/node_modules ./node_modules
+COPY --from=frontend-builder /app/frontend/package.json ./package.json
 
 # ============================================
 # Startup Script

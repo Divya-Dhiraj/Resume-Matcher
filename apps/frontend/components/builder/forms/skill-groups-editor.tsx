@@ -4,11 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import {
-  parseSkillGroups,
-  serializeSkillGroups,
-  type SkillGroup,
-} from '@/lib/utils/skill-groups';
+import { parseSkillGroups, serializeSkillGroups, type SkillGroup } from '@/lib/utils/skill-groups';
 
 interface SkillGroupsEditorProps {
   /** The technicalSkills field as stored — a `list[str]` per backend contract. */

@@ -61,6 +61,17 @@ export interface AdditionalInfo {
   languages?: string[];
   certificationsTraining?: string[];
   awards?: string[];
+  // Per-resume overrides for the sub-section headings the templates render
+  // inside this section (Technical Skills, Languages, Certifications, Awards).
+  // A missing key means "use default from i18n". Wired to backend
+  // AdditionalInfo.labels dict; consumed by templates via
+  // additionalSectionLabels prop.
+  labels?: Partial<AdditionalSectionLabels>;
+  // Extra user-defined blocks appended below the four built-in ones —
+  // same shape as CustomSection.blocks so the same editor + renderer work.
+  // Used to add sub-sections like "Publications" or "Volunteering" INSIDE
+  // Skills & Awards without creating a whole new top-level section.
+  extraBlocks?: GroupedBlock[];
 }
 
 export interface AdditionalSectionLabels {
@@ -87,7 +98,16 @@ export interface ResumeFallbackLabels {
 }
 
 // Section Type for dynamic sections
-export type SectionType = 'personalInfo' | 'text' | 'itemList' | 'stringList';
+export type SectionType = 'personalInfo' | 'text' | 'itemList' | 'stringList' | 'groupedList';
+
+// One labeled sub-block inside a groupedList section — see CustomSection.blocks.
+// Same shape as the built-in Skills & Awards sub-fields, extracted so users
+// can build sections that look like it (Publications, Volunteering, …).
+export interface GroupedBlock {
+  id: number;
+  label: string;
+  items?: string[];
+}
 
 // Section Metadata for dynamic section management
 export interface SectionMeta {
@@ -117,6 +137,7 @@ export interface CustomSection {
   items?: CustomSectionItem[]; // For itemList type
   strings?: string[]; // For stringList type
   text?: string; // For text type
+  blocks?: GroupedBlock[]; // For groupedList type
 }
 
 export interface ResumeData {
@@ -183,6 +204,14 @@ const Resume: React.FC<ResumeProps> = ({
   // Convert settings to CSS variables
   const cssVars = settingsToCssVars(mergedSettings, locale);
 
+  // Per-resume label overrides win over anything the caller supplied via the
+  // additionalSectionLabels prop (which is normally the i18n defaults). This
+  // is how "renamed sub-heading in the editor" reaches the rendered resume.
+  const effectiveAdditionalSectionLabels: Partial<AdditionalSectionLabels> = {
+    ...additionalSectionLabels,
+    ...resumeData.additional?.labels,
+  };
+
   return (
     <div
       className={`${baseStyles['resume-body']} bg-white text-black w-full mx-auto resume-template-${mergedSettings.template}`}
@@ -192,7 +221,7 @@ const Resume: React.FC<ResumeProps> = ({
         <ResumeSingleColumn
           data={resumeData}
           showContactIcons={mergedSettings.showContactIcons}
-          additionalSectionLabels={additionalSectionLabels}
+          additionalSectionLabels={effectiveAdditionalSectionLabels}
         />
       )}
       {mergedSettings.template === 'swiss-two-column' && (
@@ -206,7 +235,7 @@ const Resume: React.FC<ResumeProps> = ({
         <ResumeModern
           data={resumeData}
           showContactIcons={mergedSettings.showContactIcons}
-          additionalSectionLabels={additionalSectionLabels}
+          additionalSectionLabels={effectiveAdditionalSectionLabels}
         />
       )}
       {mergedSettings.template === 'modern-two-column' && (
@@ -221,14 +250,14 @@ const Resume: React.FC<ResumeProps> = ({
         <ResumeLatex
           data={resumeData}
           showContactIcons={mergedSettings.showContactIcons}
-          additionalSectionLabels={additionalSectionLabels}
+          additionalSectionLabels={effectiveAdditionalSectionLabels}
         />
       )}
       {mergedSettings.template === 'clean' && (
         <ResumeClean
           data={resumeData}
           showContactIcons={mergedSettings.showContactIcons}
-          additionalSectionLabels={additionalSectionLabels}
+          additionalSectionLabels={effectiveAdditionalSectionLabels}
         />
       )}
       {mergedSettings.template === 'vivid' && (

@@ -14,10 +14,12 @@
 #   ./dev.sh reset          # remove container + re-run npm ci for a clean state
 #
 # First-time setup:
-#   1. Build the production image once (bakes deps into the image):
+#   1. Build the production image once (bakes deps AND node_modules into
+#      the image so dev mode has linux-arm64 node_modules available):
 #        docker compose build
-#   2. Install frontend node_modules on your host (dev mode reuses these):
-#        (cd apps/frontend && npm ci)
+#   Host node_modules is NOT required — dev mode uses the image's own copy,
+#   isolated inside an anonymous volume so it doesn't clash with a darwin
+#   copy on the host.
 #
 # When to still `docker compose build`:
 #   - Changed Dockerfile
@@ -40,11 +42,10 @@ case "$cmd" in
       echo "    Run once first:  docker compose build" >&2
       exit 1
     fi
-    if [ ! -d "apps/frontend/node_modules" ]; then
-      echo "❌  apps/frontend/node_modules missing." >&2
-      echo "    Run once first:  (cd apps/frontend && npm ci)" >&2
-      exit 1
-    fi
+    # No host-side node_modules check — dev mode uses the container's own
+    # copy (populated by the image build) via an anonymous volume so the
+    # host's darwin-arm64 build and the container's linux-arm64 build stay
+    # cleanly separated.
     shift || true
     exec "${COMPOSE[@]}" up "$@"
     ;;

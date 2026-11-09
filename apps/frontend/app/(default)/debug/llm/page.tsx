@@ -122,7 +122,8 @@ export default function LlmDebugPage() {
                 LLM Inspector
               </h1>
               <p className="font-mono text-xs text-steel-grey">
-                Last {calls.length} call{calls.length === 1 ? '' : 's'} · newest first · polls every 2s
+                Last {calls.length} call{calls.length === 1 ? '' : 's'} · newest first · polls every
+                2s
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -166,17 +167,14 @@ export default function LlmDebugPage() {
 
         {filtered.length === 0 && (
           <div className="border border-dashed border-steel-grey p-8 text-center font-mono text-xs text-steel-grey bg-white">
-            No LLM calls captured yet. Trigger anything that runs the model (upload a resume,
-            create an application, tailor) and this list will populate.
+            No LLM calls captured yet. Trigger anything that runs the model (upload a resume, create
+            an application, tailor) and this list will populate.
           </div>
         )}
 
         {filtered.map((call) => {
           const isOpen = expanded.has(call.id);
-          const totalPromptChars = call.messages.reduce(
-            (n, m) => n + (m.content?.length ?? 0),
-            0
-          );
+          const totalPromptChars = call.messages.reduce((n, m) => n + (m.content?.length ?? 0), 0);
           return (
             <div key={call.id} className="border border-black bg-white shadow-sw-default">
               <button
@@ -190,7 +188,9 @@ export default function LlmDebugPage() {
                         call.status === 'success' ? 'bg-green-600' : 'bg-red-600'
                       }`}
                     />
-                    <span className="font-mono text-xs font-bold">{formatTime(call.timestamp)}</span>
+                    <span className="font-mono text-xs font-bold">
+                      {formatTime(call.timestamp)}
+                    </span>
                     <span className="font-mono text-xs text-steel-grey">
                       {call.model ?? '(no model)'}
                     </span>
@@ -204,7 +204,8 @@ export default function LlmDebugPage() {
                     )}
                   </div>
                   <span className="font-mono text-[10px] text-steel-grey">
-                    prompt {humanSize(totalPromptChars)} · response {humanSize(call.response.length)}
+                    prompt {humanSize(totalPromptChars)} · response{' '}
+                    {humanSize(call.response.length)}
                   </span>
                 </div>
               </button>

@@ -230,16 +230,28 @@ export const FONT_FAMILY_META: Record<
   roboto: { label: 'Roboto', bucket: 'sans-serif', preview: 'Roboto, sans-serif' },
   lato: { label: 'Lato', bucket: 'sans-serif', preview: 'Lato, sans-serif' },
   'open-sans': { label: 'Open Sans', bucket: 'sans-serif', preview: '"Open Sans", sans-serif' },
-  carlito: { label: 'Carlito (Calibri)', bucket: 'sans-serif', preview: 'Carlito, Calibri, sans-serif' },
+  carlito: {
+    label: 'Carlito (Calibri)',
+    bucket: 'sans-serif',
+    preview: 'Carlito, Calibri, sans-serif',
+  },
   'liberation-serif': {
     label: 'Liberation Serif (Times)',
     bucket: 'serif',
     preview: '"Liberation Serif", Times, serif',
   },
   caladea: { label: 'Caladea (Cambria)', bucket: 'serif', preview: 'Caladea, Cambria, serif' },
-  'dejavu-serif': { label: 'DejaVu Serif', bucket: 'serif', preview: '"DejaVu Serif", Georgia, serif' },
+  'dejavu-serif': {
+    label: 'DejaVu Serif',
+    bucket: 'serif',
+    preview: '"DejaVu Serif", Georgia, serif',
+  },
   'fira-code': { label: 'Fira Code', bucket: 'mono', preview: '"Fira Code", monospace' },
-  'liberation-mono': { label: 'Liberation Mono', bucket: 'mono', preview: '"Liberation Mono", monospace' },
+  'liberation-mono': {
+    label: 'Liberation Mono',
+    bucket: 'mono',
+    preview: '"Liberation Mono", monospace',
+  },
 };
 
 export const HEADER_FONT_MAP: Record<HeaderFontFamily, string> = buildHeaderFontMap();

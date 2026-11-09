@@ -380,6 +380,17 @@ export const ResumeVivid: React.FC<ResumeVividProps> = ({
             </div>
           )}
 
+          {/* Extra user-defined blocks — each rendered as its own sidebar section. */}
+          {isSectionVisible('additional') &&
+            (additional?.extraBlocks ?? [])
+              .filter((b) => b.label?.trim() || (b.items?.length ?? 0) > 0)
+              .map((block, idx) => (
+                <div key={block.id ?? idx} className={baseStyles['resume-section']}>
+                  {block.label?.trim() && <h3 className={styles.sectionTitleSm}>{block.label}</h3>}
+                  <p className={baseStyles['resume-text-xs']}>{(block.items ?? []).join(' • ')}</p>
+                </div>
+              ))}
+
           {personalInfo &&
             (personalInfo.website || personalInfo.linkedin || personalInfo.github) && (
               <div className={baseStyles['resume-section']}>
@@ -430,6 +441,10 @@ const DynamicResumeSectionVivid: React.FC<{
         return Boolean(customSection.items?.length);
       case 'stringList':
         return Boolean(customSection.strings?.length);
+      case 'groupedList':
+        // Consistent with DynamicResumeSection: a section with at least one
+        // block (even empty) still renders its title.
+        return (customSection.blocks?.length ?? 0) > 0;
       default:
         return false;
     }
@@ -475,7 +490,35 @@ const DynamicResumeSectionVivid: React.FC<{
         </div>
       ) : null}
       {sectionMeta.sectionType === 'stringList' && customSection.strings?.length ? (
-        <p className={baseStyles['resume-text-xs']}>{customSection.strings.join(' • ')}</p>
+        <div className={baseStyles['resume-text-xs']}>
+          <GroupedSkillsList
+            skills={customSection.strings}
+            layout="stack"
+            className="flex flex-col gap-1"
+            joiner=" • "
+          />
+        </div>
+      ) : null}
+      {sectionMeta.sectionType === 'groupedList' && customSection.blocks?.length ? (
+        <div className="flex flex-col gap-2">
+          {customSection.blocks
+            .filter((b) => b.label?.trim() || (b.items?.length ?? 0) > 0)
+            .map((block, idx) => (
+              <div key={block.id ?? idx}>
+                {block.label?.trim() && (
+                  <div className="font-bold text-xs uppercase tracking-wider">{block.label}</div>
+                )}
+                <div className={baseStyles['resume-text-xs']}>
+                  <GroupedSkillsList
+                    skills={block.items ?? []}
+                    layout="inline"
+                    className="flex flex-col gap-0.5"
+                    joiner=" • "
+                  />
+                </div>
+              </div>
+            ))}
+        </div>
       ) : null}
     </div>
   );

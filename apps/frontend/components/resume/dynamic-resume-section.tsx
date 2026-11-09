@@ -4,9 +4,11 @@ import type {
   SectionMeta,
   CustomSection,
   CustomSectionItem,
+  GroupedBlock,
 } from '@/components/dashboard/resume-component';
 import { formatDateRange } from '@/lib/utils';
 import { DescriptionList } from './description-list';
+import { GroupedSkillsList } from './grouped-skills-list';
 import baseStyles from './styles/_base.module.css';
 
 interface DynamicResumeSectionProps {
@@ -38,6 +40,15 @@ export const DynamicResumeSection: React.FC<DynamicResumeSectionProps> = ({
         return Boolean(customSection.items?.length);
       case 'stringList':
         return Boolean(customSection.strings?.length);
+      case 'groupedList':
+        // Any block at all keeps the section visible so the user sees their
+        // new section's title in the live preview immediately after they
+        // add it — the alternative (require populated content) hides the
+        // section entirely until it has something in it, which reads as
+        // "the section didn't get created." Empty blocks are skipped inside
+        // GroupedListSectionContent, so the heading appears with no inner
+        // rows until the user types something.
+        return (customSection.blocks?.length ?? 0) > 0;
       default:
         return false;
     }
@@ -64,6 +75,8 @@ function renderContent(sectionType: SectionMeta['sectionType'], customSection: C
       return <ItemListSectionContent items={customSection.items || []} />;
     case 'stringList':
       return <StringListSectionContent strings={customSection.strings || []} />;
+    case 'groupedList':
+      return <GroupedListSectionContent blocks={customSection.blocks || []} />;
     default:
       return null;
   }
@@ -121,8 +134,45 @@ const ItemListSectionContent: React.FC<{ items: CustomSectionItem[] }> = ({ item
  */
 const StringListSectionContent: React.FC<{ strings: string[] }> = ({ strings }) => {
   if (strings.length === 0) return null;
+  // Route through the shared grouped renderer so a stringList entry that
+  // happens to be in the "Category: item, item" shape still bolds the
+  // category — same behavior as the built-in Skills field.
+  return (
+    <div className={baseStyles['resume-text-sm']}>
+      <GroupedSkillsList skills={strings} layout="inline" className="flex flex-col gap-0.5" />
+    </div>
+  );
+};
 
-  return <div className={baseStyles['resume-text-sm']}>{strings.join(', ')}</div>;
+/**
+ * Grouped List Section Content — multiple labeled sub-blocks, each a mini
+ * string list. Renders like the built-in Skills & Awards, with each block's
+ * label bolded above its comma-joined items (grouped-skill "Category: item"
+ * lines still render as inner bold groups via GroupedSkillsList).
+ */
+const GroupedListSectionContent: React.FC<{ blocks: GroupedBlock[] }> = ({ blocks }) => {
+  const nonEmpty = blocks.filter((b) => b.label?.trim() || (b.items?.length ?? 0) > 0);
+  if (nonEmpty.length === 0) return null;
+
+  return (
+    <div className={`${baseStyles['resume-stack']} ${baseStyles['resume-text-sm']}`}>
+      {nonEmpty.map((block, idx) => (
+        <div key={block.id ?? idx} className="flex">
+          <span className="font-bold w-32 shrink-0">
+            {block.label?.trim() || ''}
+            {block.label?.trim() ? ':' : ''}
+          </span>
+          <div className="flex-1">
+            <GroupedSkillsList
+              skills={block.items ?? []}
+              layout="inline"
+              className="flex flex-col gap-0.5"
+            />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 };
 
 export default DynamicResumeSection;
