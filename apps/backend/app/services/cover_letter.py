@@ -6,6 +6,7 @@ from typing import Any
 
 from app.config import load_config_file
 from app.llm import complete
+from app.services.panel import complete_with_panel
 from app.prompts.templates import (
     COVER_LETTER_PROMPT,
     GENERATE_TITLE_PROMPT,
@@ -78,10 +79,15 @@ async def generate_cover_letter(
             output_language=output_language,
         )
 
-    result = await complete(
+    result = await complete_with_panel(
         prompt=prompt,
         system_prompt="You are a professional career coach and resume writer. Write compelling, personalized cover letters.",
         max_tokens=2048,
+        merge_instruction=(
+            "Merge the cover-letter drafts below into ONE final letter that keeps the "
+            "most specific, verifiable claims and drops generic filler. Match the voice "
+            "of the resume. Output the final letter only — no preamble, no commentary."
+        ),
     )
 
     return result.strip()
@@ -127,10 +133,15 @@ async def generate_outreach_message(
             output_language=output_language,
         )
 
-    result = await complete(
+    result = await complete_with_panel(
         prompt=prompt,
         system_prompt="You are a professional networking coach. Write genuine, engaging cold outreach messages.",
         max_tokens=1024,
+        merge_instruction=(
+            "Merge the outreach drafts below into ONE final message. Keep the most "
+            "specific hooks and the clearest ask; drop clichés. Output the final "
+            "message only — no commentary."
+        ),
     )
 
     return result.strip()

@@ -756,6 +756,10 @@ class LLMConfigRequest(BaseModel):
     # Strictly typed so invalid values are rejected at the boundary (422)
     # rather than corrupting config.json and crashing later reads.
     reasoning_effort: Literal["minimal", "low", "medium", "high", ""] | None = None
+    # Panel depth for claude_code_cli. "light" = single call (default),
+    # "mini" = 3 reviewer personas in parallel, "full" = 7 personas. Ignored
+    # for other providers.
+    panel_depth: Literal["light", "mini", "full"] | None = None
 
 
 class LLMConfigResponse(BaseModel):
@@ -766,6 +770,7 @@ class LLMConfigResponse(BaseModel):
     api_key: str  # Masked
     api_base: str | None = None
     reasoning_effort: ReasoningEffortLiteral | None = None
+    panel_depth: Literal["light", "mini", "full"] = "light"
 
 
 class FeatureConfigRequest(BaseModel):

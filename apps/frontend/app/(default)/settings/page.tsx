@@ -27,6 +27,7 @@ import {
   type LLMHealthCheck,
   type PromptOption,
   type ReasoningEffort,
+  type PanelDepth,
   type FeaturePromptsUpdate,
   type ApiKeyProviderStatus,
   type ApiKeyProvider,
@@ -78,6 +79,7 @@ const PROVIDERS: LLMProvider[] = [
   'deepseek',
   'groq',
   'ollama',
+  'claude_code_cli',
 ];
 
 const SEGMENTED_BUTTON_BASE =
@@ -128,6 +130,9 @@ export default function SettingsPage() {
   // won't re-fire on next load). Typed tightly so invalid values can't leak
   // through the save path.
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | 'auto'>('auto');
+  // claude_code_cli: how many reviewer personas run per generation.
+  // "light" = 1 call (fast, cheap), "mini" = 3 parallel, "full" = 7 parallel.
+  const [panelDepth, setPanelDepth] = useState<PanelDepth>('light');
 
   // Use cached system status (loaded on app start, refreshes every 30 min)
   const {
@@ -309,6 +314,7 @@ export default function SettingsPage() {
           setApiKey('');
           setApiBase(llmConfig.api_base || '');
           setReasoningEffort((llmConfig.reasoning_effort as ReasoningEffort | null) ?? 'auto');
+          setPanelDepth((llmConfig.panel_depth as PanelDepth | undefined) ?? 'light');
 
           if (providerFromBackend !== safeProvider) {
             setError(t('settings.errors.unknownProvider', { provider: providerFromBackend }));
@@ -444,6 +450,7 @@ export default function SettingsPage() {
         // Map UI sentinel 'auto' → '' so the server persists an empty string
         // and the gpt-5 auto-migration won't re-fire.
         reasoning_effort: reasoningEffort === 'auto' ? '' : (reasoningEffort as ReasoningEffort),
+        panel_depth: panelDepth,
       };
       await updateLlmConfig(update);
 
@@ -589,6 +596,7 @@ export default function SettingsPage() {
         setModel(llmConfig.model || PROVIDER_INFO['openai'].defaultModel);
         setApiBase(llmConfig.api_base || '');
         setReasoningEffort(llmConfig.reasoning_effort ?? 'auto');
+        setPanelDepth((llmConfig.panel_depth as PanelDepth | undefined) ?? 'light');
       }
       setApiKey('');
       setHasStoredApiKey(false);
@@ -1047,6 +1055,43 @@ export default function SettingsPage() {
                   {t('settings.llmConfiguration.reasoningEffortDescription')}
                 </p>
               </div>
+
+              {/* Panel Depth — only meaningful for the Claude Code CLI provider,
+                  where multiple reviewer personas can run in parallel on every
+                  generation. The other providers ignore it. */}
+              {provider === 'claude_code_cli' && (
+                <div className="space-y-2">
+                  <Dropdown
+                    label="Hiring-panel depth"
+                    value={panelDepth}
+                    onChange={(value) => setPanelDepth(value as PanelDepth)}
+                    options={[
+                      {
+                        id: 'light',
+                        label: 'Light — 1 call (fast, default)',
+                        description:
+                          'Single call with the hiring-manager perspective layered on. Fastest + cheapest.',
+                      },
+                      {
+                        id: 'mini',
+                        label: 'Mini panel — 3 parallel calls',
+                        description:
+                          'Hiring manager, recruiter, skeptic in parallel. 3× tokens, sharper output.',
+                      },
+                      {
+                        id: 'full',
+                        label: 'Full panel — 7 parallel calls',
+                        description:
+                          'Full hiring panel (HM, recruiter, skeptic, domain expert, ATS, peer, exec). 7× tokens — use for the role you really want.',
+                      },
+                    ]}
+                  />
+                  <p className="text-xs text-steel-grey font-mono">
+                    Only affects the Claude Code CLI provider. Each extra persona adds one parallel
+                    call, multiplying your Claude subscription usage.
+                  </p>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex gap-4">

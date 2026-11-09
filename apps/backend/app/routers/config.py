@@ -117,12 +117,16 @@ async def get_llm_config_endpoint() -> LLMConfigResponse:
 
     provider = stored.get("provider", settings.llm_provider)
     reasoning_effort = stored.get("reasoning_effort", settings.reasoning_effort)
+    panel_depth = stored.get("panel_depth", "light")
+    if panel_depth not in ("light", "mini", "full"):
+        panel_depth = "light"
     return LLMConfigResponse(
         provider=provider,
         model=stored.get("model", settings.llm_model),
         api_key=_mask_api_key(resolve_api_key(stored, provider)),
         api_base=_effective_api_base(stored),
         reasoning_effort=reasoning_effort or None,
+        panel_depth=panel_depth,
     )
 
 
@@ -164,6 +168,8 @@ async def update_llm_config(
         # Persist empty string on clear so the gpt-5 auto-migration doesn't
         # re-fire on next get_llm_config() call.
         stored["reasoning_effort"] = request.reasoning_effort
+    if request.panel_depth is not None:
+        stored["panel_depth"] = request.panel_depth
 
     # Build normalized config for response and background health check
     resolved_provider = stored.get("provider", settings.llm_provider)
@@ -208,6 +214,9 @@ async def update_llm_config(
         api_key=_mask_api_key(test_config.api_key),
         api_base=test_config.api_base,
         reasoning_effort=test_config.reasoning_effort,
+        panel_depth=stored.get("panel_depth", "light")
+        if stored.get("panel_depth") in ("light", "mini", "full")
+        else "light",
     )
 
 

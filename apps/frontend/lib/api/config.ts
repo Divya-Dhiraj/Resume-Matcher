@@ -10,7 +10,10 @@ export type LLMProvider =
   | 'gemini'
   | 'deepseek'
   | 'groq'
-  | 'ollama';
+  | 'ollama'
+  | 'claude_code_cli';
+
+export type PanelDepth = 'light' | 'mini' | 'full';
 
 // Reasoning-effort levels supported by LiteLLM. `null` (or absent) means
 // "do not send the parameter" — the default for max compatibility.
@@ -22,12 +25,14 @@ export interface LLMConfig {
   api_key: string;
   api_base: string | null;
   reasoning_effort: ReasoningEffort | null;
+  panel_depth?: PanelDepth;
 }
 
 export interface LLMConfigUpdate {
   provider?: LLMProvider;
   model?: string;
   api_key?: string;
+  panel_depth?: PanelDepth;
   api_base?: string | null;
   // Pass '' (empty string) to clear; null is ignored by the server.
   reasoning_effort?: ReasoningEffort | '' | null;
@@ -202,6 +207,12 @@ export const PROVIDER_INFO: Record<
     defaultModel: 'gemma3:4b',
     requiresKey: false,
     defaultBaseUrl: 'http://localhost:11434',
+  },
+  claude_code_cli: {
+    name: 'Claude Code CLI (via subscription)',
+    defaultModel: 'sonnet',
+    requiresKey: false,
+    defaultBaseUrl: 'http://host.docker.internal:11435',
   },
 };
 

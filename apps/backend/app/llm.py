@@ -404,8 +404,42 @@ _PROVIDER_KEY_MAP: dict[str, str] = {
 # default), because the env var may hold a real paid-API key that would then
 # leak to a local/compatible endpoint the user set up expecting no auth.
 _PROVIDERS_WITHOUT_ENV_KEY_FALLBACK: frozenset[str] = frozenset(
-    {"openai_compatible", "ollama"}
+    {"openai_compatible", "ollama", "claude_code_cli"}
 )
+
+
+# Provider that talks to the user's local Claude Code CLI via the host-side
+# bridge (see apps/backend/app/services/claude_bridge_client.py and
+# .app-launcher/claude-bridge.py). This provider bypasses LiteLLM entirely
+# — no Router, no api_key, no HTTP to an LLM vendor.
+_CLAUDE_CLI_PROVIDER = "claude_code_cli"
+
+
+def _claude_bridge_base_url(config_api_base: str | None) -> str:
+    """Resolve the bridge URL from (api_base or env or default).
+
+    Docker containers reach the host via ``host.docker.internal``; a native
+    backend reaches it via ``127.0.0.1``. The user can override both with
+    the Settings "API base" field or the ``CLAUDE_BRIDGE_URL`` env var.
+    """
+    import os
+
+    if config_api_base:
+        return config_api_base.rstrip("/")
+    env = os.environ.get("CLAUDE_BRIDGE_URL")
+    if env:
+        return env.rstrip("/")
+    return "http://host.docker.internal:11435"
+
+
+def _claude_model_from_config(model: str) -> str:
+    """Map the config model string to one of sonnet/opus/haiku that `claude -p` accepts."""
+    m = (model or "").lower()
+    if "opus" in m:
+        return "opus"
+    if "haiku" in m:
+        return "haiku"
+    return "sonnet"
 
 
 def resolve_api_key(stored: dict, provider: str) -> str:
@@ -646,6 +680,29 @@ async def check_llm_health(
     if config is None:
         config = get_llm_config()
 
+    # claude_code_cli: health is "can the host bridge reach the CLI?" — no
+    # API key needed, LiteLLM entirely bypassed.
+    if config.provider == _CLAUDE_CLI_PROVIDER:
+        from app.services.claude_bridge_client import ClaudeBridgeClient
+
+        client = ClaudeBridgeClient(_claude_bridge_base_url(config.api_base))
+        try:
+            info = await client.health()
+            return {
+                "healthy": True,
+                "provider": config.provider,
+                "model": config.model,
+                "response_model": info.get("claude_version"),
+            }
+        except Exception as e:
+            return {
+                "healthy": False,
+                "provider": config.provider,
+                "model": config.model,
+                "error_code": "bridge_unreachable",
+                "message": f"Could not reach Claude Code bridge: {e}",
+            }
+
     # Check if API key is configured. Ollama and openai_compatible local
     # servers often run without auth, so a blank key is acceptable for those
     # providers — a sentinel is passed downstream (see _effective_api_key)
@@ -772,6 +829,28 @@ async def complete(
 
     Transport retries (429, 500, timeout) are handled by the Router.
     """
+    if config is None:
+        config = get_llm_config()
+
+    if config.provider == _CLAUDE_CLI_PROVIDER:
+        # claude_code_cli bypasses LiteLLM entirely — go straight to the
+        # host-side bridge. See services/claude_bridge_client.py.
+        from app.services.claude_bridge_client import ClaudeBridgeClient
+
+        client = ClaudeBridgeClient(
+            _claude_bridge_base_url(config.api_base),
+            timeout_s=_calculate_timeout("completion", max_tokens, config.provider),
+        )
+        try:
+            return await client.generate(
+                prompt,
+                system_prompt=system_prompt,
+                model=_claude_model_from_config(config.model),
+            )
+        except Exception as e:
+            logging.error(f"Claude bridge completion failed: {e}")
+            raise ValueError(f"Claude Code CLI bridge failed: {e}") from e
+
     router, config = get_router(config)
     model_name = get_model_name(config)
 
@@ -1200,6 +1279,39 @@ async def complete_json(
             "keywords", or "interview_prep". Passed to _appears_truncated for
             context-aware truncation detection and used to tailor retry hints.
     """
+    if config is None:
+        config = get_llm_config()
+
+    if config.provider == _CLAUDE_CLI_PROVIDER:
+        # Bypass Router; reuse the same _extract_json / _appears_truncated
+        # content-quality retry loop so Claude-bridge output is sanitized
+        # the same way as LiteLLM output.
+        from app.services.claude_bridge_client import ClaudeBridgeClient
+
+        json_system = (
+            (system_prompt or "")
+            + "\n\nYou must respond with valid JSON only. No explanations, no markdown."
+        )
+        client = ClaudeBridgeClient(
+            _claude_bridge_base_url(config.api_base),
+            timeout_s=_calculate_timeout("json", max_tokens, config.provider),
+        )
+        last_err: Exception | None = None
+        for attempt in range(retries + 1):
+            try:
+                raw = await client.generate(
+                    prompt,
+                    system_prompt=json_system,
+                    model=_claude_model_from_config(config.model),
+                )
+                return _extract_json(raw)
+            except Exception as e:
+                last_err = e
+                logging.warning(
+                    "claude_code_cli json attempt %d failed: %s", attempt + 1, e
+                )
+        raise ValueError(f"Claude Code CLI json completion failed: {last_err}")
+
     router, config = get_router(config)
     model_name = get_model_name(config)
 
