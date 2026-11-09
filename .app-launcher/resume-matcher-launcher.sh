@@ -28,7 +28,32 @@ cmd="${1:-start}"
 
 case "$cmd" in
   open)
-    open "$APP_URL"
+    # Plain `open "$APP_URL"` reuses an existing tab silently if the URL is
+    # already loaded somewhere in the default browser — the user sees
+    # nothing happen. `open location` via osascript goes through
+    # LaunchServices with activation, so the browser is guaranteed to come
+    # to the front whether or not a matching tab is already open.
+    osascript -e "open location \"$APP_URL\"" >/dev/null 2>&1 || open "$APP_URL"
+    # Belt and braces: explicitly activate the default HTTP browser
+    # (Chrome specifically does not always come forward from
+    # `open location` when its window is minimized or on another Space).
+    # Uses python3 to parse LaunchServices preferences — BSD awk on macOS
+    # can't do regex captures, so staying away from awk here.
+    default_browser_bundle="$(python3 -c "
+import plistlib, os, sys
+try:
+    with open(os.path.expanduser('~/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist'), 'rb') as f:
+        p = plistlib.load(f)
+    for h in p.get('LSHandlers', []):
+        if h.get('LSHandlerURLScheme') == 'http':
+            print(h.get('LSHandlerRoleAll', ''))
+            break
+except Exception:
+    pass
+" 2>/dev/null)"
+    if [ -n "$default_browser_bundle" ]; then
+      open -b "$default_browser_bundle" >/dev/null 2>&1 || true
+    fi
     exit 0
     ;;
 
