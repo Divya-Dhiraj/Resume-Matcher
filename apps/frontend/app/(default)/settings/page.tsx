@@ -930,13 +930,39 @@ export default function SettingsPage() {
               {/* Model Input */}
               <div className="space-y-2">
                 <Label htmlFor="model">{t('settings.llmConfiguration.modelLabel')}</Label>
-                <Input
-                  id="model"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder={providerInfo.defaultModel}
-                  className="font-mono"
-                />
+                {provider === 'claude_code_cli' ? (
+                  <div className="flex flex-col gap-2">
+                    {[
+                      { value: 'sonnet', label: 'Sonnet', desc: 'Recommended — fast & capable' },
+                      { value: 'opus', label: 'Opus', desc: 'Most capable — deeper analysis' },
+                      { value: 'haiku', label: 'Haiku', desc: 'Fastest & cheapest' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setModel(opt.value)}
+                        className={`flex items-center gap-3 border px-4 py-3 text-left font-mono text-sm transition-colors ${
+                          model === opt.value
+                            ? 'border-black bg-black text-white shadow-sw-xs'
+                            : 'border-black bg-white hover:bg-paper-tint'
+                        }`}
+                      >
+                        <span className="font-bold">{opt.label}</span>
+                        <span className={model === opt.value ? 'text-white/70' : 'text-steel-grey'}>
+                          {opt.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <Input
+                    id="model"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder={providerInfo.defaultModel}
+                    className="font-mono"
+                  />
+                )}
                 <p className="text-xs text-steel-grey font-mono">
                   {t('settings.llmConfiguration.defaultModel', {
                     model: providerInfo.defaultModel,
