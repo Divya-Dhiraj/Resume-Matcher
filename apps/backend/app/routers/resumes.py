@@ -1240,6 +1240,16 @@ async def improve_resume_confirm_endpoint(
             title=title,
         )
 
+        # Auto-export CV + cover letter (PDF + DOCX) to the user's host-
+        # mounted Resume Matcher/<Company>/<Role>/ folder. Fire-and-forget:
+        # a failure here must NOT block the tailor response.
+        try:
+            from app.services.exporter import export_tailored_bundle
+
+            asyncio.create_task(export_tailored_bundle(tailored_resume["resume_id"]))
+        except Exception as e:  # pragma: no cover
+            logger.warning("auto-export scheduling failed: %s", e)
+
         return ImproveResumeResponse(
             request_id=request_id,
             data=ImproveResumeData(
@@ -1482,6 +1492,16 @@ async def improve_resume_endpoint(
             job=job,
             title=title,
         )
+
+        # Auto-export CV + cover letter (PDF + DOCX) to the user's host-
+        # mounted Resume Matcher/<Company>/<Role>/ folder. Fire-and-forget:
+        # a failure here must NOT block the tailor response.
+        try:
+            from app.services.exporter import export_tailored_bundle
+
+            asyncio.create_task(export_tailored_bundle(tailored_resume["resume_id"]))
+        except Exception as e:  # pragma: no cover
+            logger.warning("auto-export scheduling failed: %s", e)
 
         return ImproveResumeResponse(
             request_id=request_id,
@@ -1850,6 +1870,14 @@ async def generate_cover_letter_endpoint(resume_id: str) -> GenerateContentRespo
 
     # Save to resume record
     await db.update_resume(resume_id, {"cover_letter": cover_letter_content})
+
+    # Re-export the bundle so the user's Desktop folder picks up the new CL.
+    try:
+        from app.services.exporter import export_tailored_bundle
+
+        asyncio.create_task(export_tailored_bundle(resume_id))
+    except Exception as e:  # pragma: no cover
+        logger.warning("auto-export on cover-letter regen failed: %s", e)
 
     return GenerateContentResponse(
         content=cover_letter_content,

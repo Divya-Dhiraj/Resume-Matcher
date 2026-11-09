@@ -79,6 +79,11 @@ services:
       - /app/frontend/.next
       # Persistent app data (uploaded resumes, DB) — same as the prod compose.
       - resume-data:/app/backend/data
+      # Auto-export target on the host. The backend writes finished PDFs +
+      # DOCX here after each tailor / cover-letter generation so the user
+      # finds everything in ~/Desktop/Resume Matcher/<Company>/<Role>/
+      # without touching the download UI.
+      - ${RESUME_EXPORTS_DIR:-${HOME}/Desktop/Resume Matcher}:/app/exports
     environment:
       - RELOAD=true
       - NODE_ENV=development

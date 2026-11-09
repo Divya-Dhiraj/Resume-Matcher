@@ -10,6 +10,10 @@ services:
       - "${PORT:-3000}:3000"
     volumes:
       - resume-data:/app/backend/data
+      # Auto-export target — each finished tailor writes PDF + DOCX for
+      # the CV and cover letter into this folder, bucketed by company.
+      # Override with RESUME_EXPORTS_DIR in .env for a different host path.
+      - ${RESUME_EXPORTS_DIR:-${HOME}/Desktop/Resume Matcher}:/app/exports
     #secrets:
     #  - llm_api_key
     environment:
