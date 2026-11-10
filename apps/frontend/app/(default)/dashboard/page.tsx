@@ -18,6 +18,7 @@ import RefreshCw from 'lucide-react/dist/esm/icons/refresh-cw';
 import Plus from 'lucide-react/dist/esm/icons/plus';
 import Settings from 'lucide-react/dist/esm/icons/settings';
 import AlertTriangle from 'lucide-react/dist/esm/icons/alert-triangle';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 
 import {
   fetchResume,
@@ -41,6 +42,7 @@ export default function DashboardPage() {
   const [tailoredResumes, setTailoredResumes] = useState<ResumeListItem[]>([]);
   const [isRetrying, setIsRetrying] = useState(false);
   const [isUploadDialogOpen, setIsUploadDialogOpen] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [isMasterChoiceDialogOpen, setIsMasterChoiceDialogOpen] = useState(false);
   const router = useRouter();
 
@@ -276,6 +278,25 @@ export default function DashboardPage() {
     }
   };
 
+  const handleDeleteResume = async () => {
+    if (!deleteTargetId) return;
+    try {
+      await deleteResume(deleteTargetId);
+      decrementResumes();
+      if (deleteTargetId === masterResumeId) {
+        setHasMasterResume(false);
+        localStorage.removeItem('master_resume_id');
+        setMasterResumeId(null);
+        setProcessingStatus('loading');
+      }
+      await loadTailoredResumes();
+    } catch (err) {
+      console.error('Failed to delete resume:', err);
+    } finally {
+      setDeleteTargetId(null);
+    }
+  };
+
   const getStatusDisplay = () => {
     switch (processingStatus) {
       case 'loading':
@@ -489,9 +510,18 @@ export default function DashboardPage() {
                         Set as master
                       </button>
                     )}
-                    {/* Only surface status when it's NOT the boring "ready" —
-                        every finished card would otherwise carry a redundant
-                        READY label. Failed/processing/pending signal action. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDeleteTargetId(resume.resume_id);
+                      }}
+                      title={t('dashboard.deleteResume')}
+                      aria-label={t('dashboard.deleteResume')}
+                      className="p-1 border border-transparent text-steel-grey hover:text-red-600 hover:border-red-600 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                     {resume.processing_status !== 'ready' && (
                       <span
                         className={`font-mono text-xs uppercase ${
@@ -583,6 +613,18 @@ export default function DashboardPage() {
           confirmLabel={t('dashboard.deleteAndReupload')}
           cancelLabel={t('confirmations.keepResumeCancelLabel')}
           onConfirm={confirmDeleteAndReupload}
+          variant="danger"
+        />
+
+        <ConfirmDialog
+          open={!!deleteTargetId}
+          onOpenChange={(open) => {
+            if (!open) setDeleteTargetId(null);
+          }}
+          title={t('dashboard.deleteResumeTitle')}
+          description={t('dashboard.deleteResumeDescription')}
+          confirmLabel={t('dashboard.deleteResumeConfirm')}
+          onConfirm={handleDeleteResume}
           variant="danger"
         />
 
