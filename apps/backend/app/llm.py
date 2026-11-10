@@ -1304,7 +1304,7 @@ async def complete_json(
                     system_prompt=json_system,
                     model=_claude_model_from_config(config.model),
                 )
-                return _extract_json(raw)
+                return json.loads(_extract_json(raw))
             except Exception as e:
                 last_err = e
                 logging.warning(

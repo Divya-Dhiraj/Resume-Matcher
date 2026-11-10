@@ -1,9 +1,14 @@
 """Job description management endpoints."""
 
+import logging
+
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 
 from app.database import db
 from app.schemas import JobUploadRequest, JobUploadResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
@@ -37,6 +42,19 @@ async def upload_job_descriptions(request: JobUploadRequest) -> JobUploadRespons
             "resume_id": request.resume_id,
         },
     )
+
+
+class JobUpdateRequest(BaseModel):
+    content: str = Field(min_length=1)
+
+
+@router.patch("/{job_id}")
+async def update_job(job_id: str, request: JobUpdateRequest) -> dict:
+    """Update a job description's content."""
+    job = await db.update_job(job_id, {"content": request.content.strip()})
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return job
 
 
 @router.get("/{job_id}")

@@ -59,7 +59,8 @@ export default function DashboardPage() {
   const jobSnippetCacheRef = useRef<Record<string, string>>({});
 
   // Check if LLM is configured (API key is set)
-  const isLlmConfigured = !statusLoading && systemStatus?.llm_configured;
+  const isLlmConfigured =
+    !statusLoading && (systemStatus?.llm_configured || systemStatus?.llm_healthy);
 
   const isTailorEnabled =
     Boolean(masterResumeId) && processingStatus === 'ready' && isLlmConfigured;

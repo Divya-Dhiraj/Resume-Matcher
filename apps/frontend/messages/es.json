@@ -1012,7 +1012,11 @@
       "saveNotes": "Guardar notas",
       "resumeUnavailable": "El currículum enviado ya no está disponible.",
       "loadFailed": "No se pudo cargar esta candidatura.",
-      "editResume": "Editar currículum"
+      "editResume": "Editar currículum",
+      "delete": "Eliminar",
+      "editJd": "Editar",
+      "cancelEditJd": "Cancelar",
+      "saveJd": "Guardar JD"
     },
     "bulk": {
       "selected": "{count} seleccionadas",

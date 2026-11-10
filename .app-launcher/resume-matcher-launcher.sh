@@ -120,12 +120,12 @@ except Exception:
           exit 1
         fi
       fi
-      for i in $(seq 1 120); do
+      for i in $(seq 1 300); do
         if docker info >/dev/null 2>&1; then log "docker up after ${i}s"; break; fi
         sleep 1
       done
       if ! docker info >/dev/null 2>&1; then
-        log "docker timed out"; echo "ERR: Docker did not start in 2 min"; exit 1
+        log "docker timed out"; echo "ERR: Docker did not start in 5 min"; exit 1
       fi
     fi
 

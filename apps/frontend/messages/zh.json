@@ -1012,7 +1012,11 @@
       "saveNotes": "保存备注",
       "resumeUnavailable": "所投递的简历已不可用。",
       "loadFailed": "无法加载此申请。",
-      "editResume": "编辑简历"
+      "editResume": "编辑简历",
+      "delete": "删除",
+      "editJd": "编辑",
+      "cancelEditJd": "取消",
+      "saveJd": "保存JD"
     },
     "bulk": {
       "selected": "已选择 {count} 项",

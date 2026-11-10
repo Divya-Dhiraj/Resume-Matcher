@@ -1012,7 +1012,11 @@
       "saveNotes": "Save notes",
       "resumeUnavailable": "The applied resume is no longer available.",
       "loadFailed": "Could not load this application.",
-      "editResume": "Edit resume"
+      "editResume": "Edit resume",
+      "delete": "Delete",
+      "editJd": "Edit",
+      "cancelEditJd": "Cancel",
+      "saveJd": "Save JD"
     },
     "bulk": {
       "selected": "{count} selected",

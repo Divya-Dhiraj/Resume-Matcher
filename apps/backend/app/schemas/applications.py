@@ -70,6 +70,7 @@ class ManualApplicationCreate(BaseModel):
     role: str | None = None
     status: ApplicationStatus = ApplicationStatus.applied
     notes: str | None = None
+    auto_tailor: bool = False
 
 
 class ApplicationUpdate(BaseModel):
@@ -81,6 +82,7 @@ class ApplicationUpdate(BaseModel):
     company: str | None = None
     role: str | None = None
     applied_at: str | None = None
+    resume_id: str | None = None
 
 
 class BulkStatusUpdate(BaseModel):

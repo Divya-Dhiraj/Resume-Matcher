@@ -312,11 +312,11 @@ def _preserve_original_skills(
     original_data: dict[str, Any] | None,
     improved_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Restore any skills, certs, languages, or awards dropped by the LLM.
+    """Log dropped skills but allow the LLM to remove irrelevant ones.
 
-    This is a hard safety net: regardless of what the LLM returns, no
-    original item from these lists is ever lost.  Dropped items are
-    appended at the end of the improved list.
+    Previously this was a hard safety net that restored every dropped item.
+    Now the LLM is trusted to remove items it deems irrelevant to the target
+    role — only languages are forcibly preserved (they are always valuable).
     """
     if not original_data:
         return improved_data
@@ -328,13 +328,11 @@ def _preserve_original_skills(
         return result
     result_additional = result.setdefault("additional", {})
 
-    list_fields = [
-        "technicalSkills",
-        "certificationsTraining",
-        "languages",
-        "awards",
-    ]
-    for field in list_fields:
+    # Only force-restore languages (always valuable); let LLM curate the rest
+    force_restore_fields = ["languages"]
+    log_only_fields = ["technicalSkills", "certificationsTraining", "awards"]
+
+    for field in force_restore_fields + log_only_fields:
         orig_items = orig_additional.get(field, [])
         if not isinstance(orig_items, list) or not orig_items:
             continue
@@ -342,21 +340,23 @@ def _preserve_original_skills(
         if not isinstance(current_items, list):
             current_items = []
 
-        # Build a case-insensitive index of what the LLM kept
         current_lower = {
             item.casefold() for item in current_items if isinstance(item, str)
         }
 
-        # Append any originals that were dropped
-        restored = 0
-        for item in orig_items:
-            if isinstance(item, str) and item.casefold() not in current_lower:
-                current_items.append(item)
-                current_lower.add(item.casefold())
-                restored += 1
+        dropped = [
+            item for item in orig_items
+            if isinstance(item, str) and item.casefold() not in current_lower
+        ]
 
-        if restored:
-            logger.info("Restored %d dropped items in additional.%s", restored, field)
+        if dropped:
+            if field in force_restore_fields:
+                for item in dropped:
+                    current_items.append(item)
+                logger.info("Restored %d dropped items in additional.%s", len(dropped), field)
+            else:
+                logger.info("LLM removed %d items from additional.%s: %s", len(dropped), field, dropped)
+
         result_additional[field] = current_items
 
     return result
@@ -2105,3 +2105,159 @@ async def download_cover_letter_pdf(
         "Content-Disposition": f'attachment; filename="cover_letter_{resume_id}.pdf"'
     }
     return Response(content=pdf_bytes, media_type="application/pdf", headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# Resume Review (lightweight hiring-panel-style, single LLM call)
+# ---------------------------------------------------------------------------
+
+@router.post("/review")
+async def review_resume(request: ImproveResumeRequest) -> dict[str, Any]:
+    """Single-pass hiring-panel review: ATS + hiring manager + rival applicant.
+
+    Returns structured JSON feedback with match_score, missing keywords,
+    weak bullets, and top fixes. One LLM call (~1k tokens out).
+    """
+    from app.llm import complete_json
+    from app.prompts.templates import RESUME_REVIEW_PROMPT
+
+    resume = await db.get_resume(request.resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    job = await db.get_job(request.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    resume_data = resume.get("processed_data") or resume.get("raw_resume", {})
+    if isinstance(resume_data, dict):
+        resume_str = json.dumps(resume_data)
+    else:
+        resume_str = str(resume_data)
+
+    prompt = RESUME_REVIEW_PROMPT.format(
+        job_description=job.get("content", ""),
+        resume_data=resume_str,
+    )
+
+    try:
+        result = await complete_json(
+            prompt=prompt,
+            system_prompt="You are a brutally honest hiring panel. Output only valid JSON.",
+            max_tokens=2048,
+            schema_type="enrichment",
+        )
+    except Exception as e:
+        logger.error("Resume review failed: %s", e)
+        raise HTTPException(status_code=500, detail="Review failed. Please try again.")
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Closed-Loop Tailor: tailor → review → re-tailor until pass or max rounds
+# ---------------------------------------------------------------------------
+
+@router.post("/improve/auto-loop")
+async def auto_loop_tailor(request: ImproveResumeRequest) -> dict[str, Any]:
+    """Closed-loop tailoring: tailor, review, re-tailor until the reviewer
+    says INTERVIEW with score >= 85, or max 3 rounds.
+
+    Uses the existing preview pipeline internally. Returns the final
+    improved resume data + all review rounds for transparency.
+    """
+    from app.prompts.templates import RESUME_REVIEW_PROMPT
+
+    max_rounds = 3
+    rounds: list[dict[str, Any]] = []
+
+    resume = await db.get_resume(request.resume_id)
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    job = await db.get_job(request.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    current_resume_id = request.resume_id
+    job_id = request.job_id
+    jd_content = job.get("content", "")
+    final_preview: dict[str, Any] | None = None
+
+    for round_num in range(1, max_rounds + 1):
+        logger.info("Auto-loop round %d for resume=%s job=%s", round_num, current_resume_id, job_id)
+
+        # --- Tailor ---
+        try:
+            preview_result = await _improve_preview_flow(
+                resume_id=current_resume_id,
+                job_id=job_id,
+                prompt_id=request.prompt_id or "keywords",
+            )
+            final_preview = preview_result
+        except Exception as e:
+            logger.error("Auto-loop tailor round %d failed: %s", round_num, e)
+            break
+
+        # --- Review the tailored version ---
+        tailored_data = preview_result.get("resume_preview", {})
+        if isinstance(tailored_data, dict):
+            resume_str = json.dumps(tailored_data)
+        else:
+            resume_str = str(tailored_data)
+
+        review_prompt = RESUME_REVIEW_PROMPT.format(
+            job_description=jd_content,
+            resume_data=resume_str,
+        )
+
+        try:
+            from app.llm import complete_json
+            review = await complete_json(
+                prompt=review_prompt,
+                system_prompt="You are a brutally honest hiring panel. Output only valid JSON.",
+                max_tokens=2048,
+                schema_type="enrichment",
+            )
+        except Exception as e:
+            logger.error("Auto-loop review round %d failed: %s", round_num, e)
+            review = {"error": str(e), "pass": False}
+
+        rounds.append({
+            "round": round_num,
+            "match_score": review.get("match_score", 0),
+            "verdict": review.get("verdict", "UNKNOWN"),
+            "top_3_fixes": review.get("top_3_fixes", []),
+            "missing_keywords": review.get("missing_keywords", []),
+            "passed": review.get("pass", False),
+        })
+
+        if review.get("pass", False):
+            logger.info("Auto-loop passed at round %d with score %s", round_num, review.get("match_score"))
+            break
+
+        # If not passed and not last round, save as intermediate resume
+        # for next round's input (lightweight — no aux messages)
+        if round_num < max_rounds:
+            try:
+                intermediate = await db.create_resume(
+                    content=json.dumps(tailored_data, indent=2),
+                    content_type="json",
+                    filename=f"autoloop_r{round_num}_{current_resume_id[:8]}",
+                    is_master=False,
+                    parent_id=current_resume_id,
+                    processed_data=tailored_data,
+                    processing_status="ready",
+                )
+                current_resume_id = intermediate["resume_id"]
+            except Exception as e:
+                logger.error("Auto-loop save round %d failed: %s", round_num, e)
+                break
+
+    return {
+        "rounds": rounds,
+        "total_rounds": len(rounds),
+        "final_passed": rounds[-1]["passed"] if rounds else False,
+        "final_score": rounds[-1]["match_score"] if rounds else 0,
+        "preview": final_preview,
+        "resume_id": current_resume_id,
+    }

@@ -373,6 +373,38 @@ def apply_diffs(
                 continue
             applied.append(change)
 
+        elif action == "remove":
+            if not isinstance(actual_value, list):
+                logger.info("Diff rejected (remove from non-list): %s", path)
+                rejected.append(change)
+                continue
+            if not isinstance(change.value, str) or not change.value.strip():
+                logger.info("Diff rejected (remove empty/non-string): %s", path)
+                rejected.append(change)
+                continue
+            target = change.value.strip()
+            removed = False
+            for i, item in enumerate(actual_value):
+                if isinstance(item, str) and item.strip() == target:
+                    actual_value.pop(i)
+                    removed = True
+                    break
+            if not removed:
+                seq_matches = [
+                    (i, SequenceMatcher(None, item, target).ratio())
+                    for i, item in enumerate(actual_value)
+                    if isinstance(item, str)
+                ]
+                best = max(seq_matches, key=lambda x: x[1], default=None)
+                if best and best[1] > 0.8:
+                    actual_value.pop(best[0])
+                    removed = True
+            if removed:
+                applied.append(change)
+            else:
+                logger.info("Diff rejected (remove target not found): %s", path)
+                rejected.append(change)
+
         elif action == "add_skill":
             if path != "additional.technicalSkills":
                 logger.info("Diff rejected (add_skill outside skills): %s", path)
@@ -445,7 +477,8 @@ def verify_diff_result(
         warnings.append("No changes were applied — resume returned unchanged")
         return warnings
 
-    # Check 2: Section counts preserved
+    # Check 2: Section entry counts preserved (entries, not bullets)
+    # Note: bullet counts may change due to removes/appends — that's expected.
     for key, label in [
         ("workExperience", "work experience"),
         ("education", "education"),
@@ -455,7 +488,7 @@ def verify_diff_result(
         result_count = len(result.get(key, []))
         if orig_count != result_count:
             warnings.append(
-                f"Section count changed: {label} ({orig_count} → {result_count})"
+                f"Entry count changed: {label} ({orig_count} → {result_count})"
             )
 
     # Check 3: Identity fields unchanged

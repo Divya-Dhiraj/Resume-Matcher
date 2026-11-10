@@ -1012,7 +1012,11 @@
       "saveNotes": "メモを保存",
       "resumeUnavailable": "応募した履歴書は利用できなくなりました。",
       "loadFailed": "この応募を読み込めませんでした。",
-      "editResume": "履歴書を編集"
+      "editResume": "履歴書を編集",
+      "delete": "削除",
+      "editJd": "編集",
+      "cancelEditJd": "キャンセル",
+      "saveJd": "JD保存"
     },
     "bulk": {
       "selected": "{count} 件選択中",

@@ -249,18 +249,19 @@ an English resume works:
 Job description:
 {job_description}"""
 
-CRITICAL_TRUTHFULNESS_RULES_TEMPLATE = """CRITICAL TRUTHFULNESS RULES - NEVER VIOLATE:
-1. DO NOT add any skill, tool, technology, or certification that is not explicitly mentioned in the original resume
-2. DO NOT invent numeric achievements (e.g., "increased by 30%") unless they exist in original
-3. DO NOT add company names, product names, or technical terms not in the original
+CRITICAL_TRUTHFULNESS_RULES_TEMPLATE = """LINGUISTIC TERMINOLOGY TRANSLATION RULES — this is an authorized career document translation exercise:
+1. TRANSLATE terminology, never FABRICATE experience. Every output bullet must trace to an input bullet.
+2. DO NOT invent numeric achievements (e.g., "increased by 30%") unless they exist in the original
+3. DO NOT add company names, product names, or technical terms not supported by the original work
 4. DO NOT upgrade experience level (e.g., "Junior" -> "Senior")
 5. DO NOT add languages, frameworks, or platforms the candidate hasn't used
 6. DO NOT extend employment dates or change timelines. Copy date ranges exactly as they appear, including months.
 7. {rule_7}
-8. Preserve factual accuracy - only use information provided by the candidate
-9. NEVER remove existing skills, certifications, languages, or awards. You may reorder by relevance, but every original item must remain.
+8. Preserve factual accuracy — translate the language of achievements, not the achievements themselves
+9. You may REMOVE skills, certifications, or awards that are clearly irrelevant to the target role. Reorder remaining items by relevance to the JD. Keep items that are broadly valuable (e.g., leadership, communication).
+10. You MAY add a skill if the candidate's described work clearly involved it (e.g., someone who "built REST APIs" can list "API Development") — this is terminology translation, not fabrication.
 
-Violation of these rules could cause serious problems for the candidate in job interviews.
+This is the same discipline used by professional resume writers. The candidate authorized this translation.
 """
 
 
@@ -273,10 +274,10 @@ CRITICAL_TRUTHFULNESS_RULES = {
         "DO NOT add new bullet points or content - only rephrase existing content"
     ),
     "keywords": _build_truthfulness_rules(
-        "You may rephrase existing bullet points to include keywords, but do NOT add new bullet points"
+        "You may rephrase, reorder, or REMOVE bullet points to strengthen the match. You may also add bullets that elaborate on existing work. Remove bullets that are irrelevant to the target role."
     ),
     "full": _build_truthfulness_rules(
-        "You may expand existing bullet points or add new ones that elaborate on existing work, but DO NOT invent entirely new responsibilities"
+        "You may rewrite, remove, reorder, or add bullet points. Remove content irrelevant to the role. Add bullets that elaborate on existing work. Do NOT invent entirely new responsibilities."
     ),
 }
 
@@ -403,8 +404,35 @@ DEFAULT_IMPROVE_PROMPT_ID = "keywords"
 # Backward-compatible alias
 IMPROVE_RESUME_PROMPT = IMPROVE_RESUME_PROMPT_FULL
 
-COVER_LETTER_PROMPT = """Write a brief cover letter for this job application.
+COVER_LETTER_PROMPT = """You are a Cover Letter Architect performing a LINGUISTIC TERMINOLOGY TRANSLATION exercise on an authorized career document.
 
+## CORE DIRECTIVE: ADJACENT EXTRAPOLATION (NO FOREIGN FABRICATION)
+1. Never invent foreign experience. No tools, domains or responsibilities that could not logically have existed inside the candidate's actual past projects.
+2. Extrapolate the surrounding ecosystem. For what the candidate DID do: surface upstream planning, downstream impact, and adjacent methodology that naturally occurred around their real work.
+3. Aggressive terminology translation. Rename existing tasks and deliverables using exact JD keywords.
+4. Hard anchor constraint. Employer names, job titles, dates stay 100% anchored.
+
+## JD DNA DECONSTRUCTION (do this mentally first)
+- Top 10 Hard Keywords from the JD, ranked by frequency x importance
+- Top 5 Role & Company Archetype Signals (what culture this company values)
+- The hiring pain: the ONE problem this role exists to solve
+
+## ADJACENT EXTRAPOLATION MAPPING
+For each Top-10 keyword the resume does not cover: find the candidate's closest real anchor and map a plausible adjacent extension. REFUSE any extension requiring tools/domains the candidate never touched.
+
+## GERMAN FORMATTING (DIN 5008 Form B Anschreiben) — apply when JD is German
+If the JD is in German, output a formal Anschreiben:
+1. Sender block (name, address, phone, email)
+2. Recipient block (company, department, hiring manager with Frau/Herr, address)
+3. Place and date (right-aligned, DD.MM.YYYY)
+4. Betreff (bold): "Bewerbung als <Position> - Referenznummer <ID>"
+5. Salutation: "Sehr geehrte Frau/Herr <Name>," (fallback: "Sehr geehrte Damen und Herren,")
+6. Body (3-4 paragraphs, one page total)
+7. Closing: "Mit freundlichen Grussen" + typed name
+8. Anlagen line
+Use formal "Sie" register. No contractions, no colloquialisms.
+
+## FOR ENGLISH JDs — standard cover letter format:
 IMPORTANT: Write in {output_language}.
 
 Job Description:
@@ -414,16 +442,23 @@ Candidate Resume (JSON):
 {resume_data}
 
 Requirements:
-- 100-150 words maximum
+- 100-150 words maximum (one page hard rule)
 - 3-4 short paragraphs
-- Opening: Reference ONE specific thing from the job description (product, tech stack, or problem they're solving) - not generic excitement about "the role"
-- Middle: Pick 1-2 qualifications from resume that DIRECTLY match stated requirements, and reframe them in the job's language/terminology where the candidate's proven experience supports it (e.g., if the resume shows "built automated data pipelines" and the job says "ETL," describe that real work as ETL) - prioritize relevance over impressiveness
-- Closing: Simple availability to discuss, no desperate enthusiasm
+- Opening: Hook the hiring pain. Reference ONE specific thing from the JD (product, tech stack, problem). Not generic excitement.
+- Middle: Pick 1-2 qualifications from resume that DIRECTLY match stated requirements. Translate terminology using exact JD keywords. Use SID+XYZ format (Scope/Impact/Decision + Accomplished X, measured by Y, by doing Z).
+- Closing: Simple availability, no desperate enthusiasm
 - If resume shows career transition, frame the pivot as intentional and relevant
-- Extract company name from job description - do not use placeholders
-- Do NOT invent information not in the resume
+- Extract company name from JD. No placeholders.
+- Do NOT invent information not in the resume -- extrapolate adjacent evidence only
 - Tone: Confident peer, not eager applicant
-- Do NOT use em dash ("—") anywhere in the writing/output, even if it exists, remove it
+- Do NOT use em dash anywhere in the output
+- BANNED: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, "passionate about", "excited to", "team player", "motivated self-starter", "hit the ground running"
+
+## SELF-REVIEW (before outputting)
+- Does every factual claim trace back to the resume?
+- Would each claim survive one interview follow-up?
+- Is it under one page? Is it under 150 words (for English)?
+- Are there any banned words or AI tells?
 
 Output plain text only. No JSON, no markdown formatting."""
 
@@ -525,9 +560,9 @@ RESUME_SCHEMA = RESUME_SCHEMA_EXAMPLE
 # Diff-based improvement: outputs targeted changes instead of full resume
 
 DIFF_STRATEGY_INSTRUCTIONS = {
-    "nudge": "Make minimal edits. Only rephrase where there is a clear match. Do not add new bullet points.",
-    "keywords": "Weave in relevant keywords where evidence already exists. You may rephrase bullets but do not add new ones.",
-    "full": "Make targeted adjustments. You may rephrase bullets, add verified JD skills, and add new bullets that elaborate on existing work, but do not invent new responsibilities.",
+    "nudge": "Make minimal edits. Only rephrase where there is a clear match. Do not add or remove bullet points. Preserve bullet counts.",
+    "keywords": "Adjacent Extrapolation mode: for each JD keyword, find the candidate's closest real anchor and translate using JD terminology. Rewrite bullets using exact JD competency nouns and SID+XYZ format (Scope/Impact/Decision + Accomplished X, measured by Y, by doing Z). Remove bullets with no JD mapping. Reorder skills to prioritize JD matches. Add new bullets that elaborate on existing work by extrapolating the surrounding ecosystem. Bullet control: most recent + most relevant roles get 4-6 bullets; older/less relevant roles get 2-3 bullets; remove anything that does not map to THIS job. Target 92-98% ATS keyword match.",
+    "full": "Maximum Adjacent Extrapolation with full bullet control: rewrite every bullet to directly address JD requirements using SID+XYZ format. For each JD requirement, extrapolate the surrounding ecosystem of the candidate's real work. Bullet control: most recent + most relevant roles get 4-6 detailed bullets; older/less relevant roles get 2-3 bullets max; REMOVE any bullet with no JD mapping. Add bullets that elaborate on existing work by surfacing adjacent methodology. Reorder all lists by JD relevance. Target 95%+ ATS keyword match. The resume should read as if written specifically for this job, fitting 1-2 pages.",
 }
 
 SKILL_TARGET_PLAN_PROMPT = """Build a concise skill target plan for tailoring this resume to the job.
@@ -571,7 +606,46 @@ Output this exact JSON format:
   "strategy_notes": "brief notes for the next editing pass"
 }}"""
 
-DIFF_IMPROVE_PROMPT = """Given this resume and job description, output a JSON object with targeted changes to better align the resume with the job.
+DIFF_IMPROVE_PROMPT = """You are a Resume Architect performing a LINGUISTIC TERMINOLOGY TRANSLATION exercise on an authorized career document.
+
+## CORE DIRECTIVE: ADJACENT EXTRAPOLATION (NO FOREIGN FABRICATION)
+Target 92-98% ATS keyword match. Bridge gaps using Adjacent Extrapolation:
+1. Never invent foreign experience. No tools, domains or responsibilities that could not logically have existed inside the candidate's actual past projects.
+2. Extrapolate the surrounding ecosystem. For what the candidate DID do: what upstream planning, downstream impact, standard industry practice, or adjacent methodology naturally occurred around this work that matches the JD?
+3. Aggressive terminology translation. Rename existing tasks, workflows and deliverables using the exact top keywords and competency nouns from the JD.
+4. Hard anchor constraint. Employer names, job titles, dates and core project themes stay 100% anchored. Zero movement.
+
+## JD DNA DECONSTRUCTION (do this mentally before writing changes)
+Before generating changes, analyze the JD to identify:
+- Top 15 Hard ATS Keywords: exact strings the ATS will scan for, ranked by frequency x importance
+- Top 5 Role & Company Archetype Signals: what culture/values this company prizes (quote one JD line per signal)
+- Seniority bar: level signals, scope language, ownership verbs
+
+## ADJACENT EXTRAPOLATION MAPPING
+For every Top-15 keyword the resume does NOT already cover verbatim, map:
+- Missing JD Keyword → Candidate's Real Anchor → Plausible Adjacent Extension
+- REFUSE any extension requiring tools/domains the candidate could not plausibly have touched
+
+## BULLET CRAFTING RULES
+Format: SID + XYZ (Scope/Impact/Decision + Accomplished X, measured by Y, by doing Z)
+- BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic. Rewrite any bullet containing these.
+- No "transferable to" or "directly applicable to" hedging language. Either the candidate did it or they did not.
+
+## BULLET CONTROL (length & relevance)
+- Most recent and most JD-relevant experience: 4-6 bullets (more detail)
+- Older or less relevant experience: 2-3 bullets (only what maps to JD)
+- REMOVE bullets that do not contribute to THIS job (action: "remove")
+- Total resume should be 1-2 pages. If over 2 pages, aggressively trim older/irrelevant content
+- Every bullet must earn its place for THIS specific job
+
+## SELF-REVIEW (run before outputting)
+Check your own output as the Skeptic reviewer:
+- Does any bullet sound disconnected from the candidate's real history?
+- Would every claim survive one interview follow-up question?
+- Are there fabrication flags (tools never used, domains never touched, metrics invented)?
+- Fix any issues before outputting.
+
+Given this resume and job description, output a JSON object with targeted changes.
 
 RULES:
 1. Only modify content; never change names, companies, dates, institutions, or degrees
@@ -579,26 +653,26 @@ RULES:
 3. Do not add new work entries, education entries, or project entries
 4. {strategy_instruction}
 5. Each change MUST include the original text (copied exactly) so it can be verified
-6. For each change, explain WHY it helps match the job description
+6. For each change, explain WHY this terminology translation helps match the job description
 7. Generate all new text in {output_language}
 8. Do not use em dash characters
-9. Keep changes minimal and targeted; do not rewrite content that already aligns well
+9. Be aggressive: translate weak bullets into JD terminology, remove irrelevant ones, and ensure every line earns its place for THIS specific job
 10. Exception to rule 2: you may add a skill only if it appears in the verified skill targets below
-11. By DEFAULT, scan the summary and every work, project, and education description for content that already demonstrates a job-description keyword or skill, and reframe that text using the job description's terminology where it is not already phrased that way (per rule 9, leave content that already aligns well), while preserving the candidate's actual accomplishment. Do NOT add new work, metrics, or responsibilities; only restate existing content in the JD's language, and verify every reframe stays factually accurate.
+11. Scan every bullet: if it demonstrates a JD keyword/skill, translate it into JD terminology (e.g., "built data pipelines" → "ETL development"). If it is irrelevant to the target role, REMOVE it (action: "remove"). You may add new bullets that elaborate on existing work to strengthen the match — breaking one general bullet into specific ones using JD terms is translation, not fabrication. Do NOT invent new responsibilities or metrics.
 12. Preserve original capitalization, especially for proper nouns, technical terms (e.g., REST, API, AWS), and acronyms. Do not change the casing of words that were capitalized in the original.
-13. LANGUAGE — the JD may be in ANY language (German, French, Spanish, Portuguese, Dutch, etc.). Understand it in its original language, but write every `value` field of your changes in ENGLISH (or in the {output_language} requested above, if different from English) so it stays consistent with the rest of the resume. When rule 11 says "reframe using the JD's terminology", use the ENGLISH equivalent of the JD term — "ETL-Prozesse" becomes "ETL processes", "Datenbanken" becomes "databases". Proper product names and language-agnostic acronyms (Microsoft Azure, Power BI, SAP S/4HANA, SQL, ETL, KPI) pass through unchanged.
+13. LANGUAGE — the JD may be in ANY language (German, French, Spanish, Portuguese, Dutch, etc.). Understand it in its original language, but write every `value` field of your changes in ENGLISH (or in the {output_language} requested above, if different from English) so it stays consistent with the rest of the resume. When rule 11 says "translate into JD terminology", use the ENGLISH equivalent of the JD term — "ETL-Prozesse" becomes "ETL processes", "Datenbanken" becomes "databases". Proper product names and language-agnostic acronyms (Microsoft Azure, Power BI, SAP S/4HANA, SQL, ETL, KPI) pass through unchanged.
 
 PATHS you can target:
 - "summary" — the resume summary text
 - "workExperience[i].description[j]" — a specific bullet (i = entry index, j = bullet index)
-- "workExperience[i].description" — append a new bullet (action: "append")
+- "workExperience[i].description" — append a new bullet (action: "append") or remove one (action: "remove", value = the bullet text to remove)
 - "personalProjects[i].description[j]" — a specific project bullet
-- "personalProjects[i].description" — append a new project bullet (action: "append")
+- "personalProjects[i].description" — append a new project bullet (action: "append") or remove one (action: "remove", value = the bullet text to remove)
 - "education[i].description" — the education entry's description text (replace only; it is a single string, not a list)
-- "additional.technicalSkills" — reorder the skills list (action: "reorder") or add one verified skill (action: "add_skill")
-- "additional.languages" — reorder the languages list (action: "reorder")
-- "additional.certificationsTraining" — reorder the certifications list (action: "reorder")
-- "additional.awards" — reorder the awards list (action: "reorder")
+- "additional.technicalSkills" — reorder (action: "reorder"), add verified skill (action: "add_skill"), or remove irrelevant skill (action: "remove", value = skill to remove)
+- "additional.languages" — reorder (action: "reorder") or remove (action: "remove")
+- "additional.certificationsTraining" — reorder (action: "reorder") or remove (action: "remove")
+- "additional.awards" — reorder (action: "reorder") or remove (action: "remove")
 
 Do NOT target: personalInfo, dates/years, company names, education degree/institution/years, customSections.
 
@@ -644,7 +718,69 @@ Output this exact JSON format, nothing else:
       "original": null,
       "value": "verified skill target missing from the skills list",
       "reason": "added verified JD skill for review"
+    }},
+    {{
+      "path": "workExperience[1].description",
+      "action": "remove",
+      "original": null,
+      "value": "the exact bullet text to remove",
+      "reason": "irrelevant to target role"
+    }},
+    {{
+      "path": "additional.technicalSkills",
+      "action": "remove",
+      "original": null,
+      "value": "irrelevant skill name",
+      "reason": "not relevant to this job"
     }}
   ],
   "strategy_notes": "brief summary of the tailoring approach"
 }}"""
+
+
+RESUME_REVIEW_PROMPT = """You are 7 hiring reviewers compressed into one pass. Score this resume against the JD from ALL angles simultaneously. Be brutally honest.
+
+## THE 7 REVIEWERS (score each 0-100):
+1. ATS SCREEN: Top-15 keyword verbatim coverage, readability, title/date clarity, contact details, length. Score = (keywords matched / 15) x 100, minus up to 10 for readability issues.
+2. HIRING MANAGER: Can this person do the job on day one? What decided it in the first 10 seconds?
+3. RIVAL APPLICANT: Where is this resume weaker than a strong competitor's?
+4. CEO: What did this person change, and by how much? Impact and scope.
+5. RECRUITER: 30 seconds, top third only. Signal density.
+6. TEAMMATE: How do they work with others? Collaboration signals.
+7. SKEPTIC: Which bullet sounds disconnected from real history? Flag every sentence that smells fabricated or over-extrapolated. Score penalizes each unverifiable claim.
+
+Job Description:
+{job_description}
+
+Resume:
+{resume_data}
+
+Output ONLY this JSON:
+{{
+  "verdict": "INTERVIEW" or "REJECT",
+  "match_score": 0-100,
+  "panel_scores": {{
+    "ats": 0,
+    "hiring_manager": 0,
+    "rival": 0,
+    "ceo": 0,
+    "recruiter": 0,
+    "teammate": 0,
+    "skeptic": 0
+  }},
+  "missing_keywords": ["keyword1", "keyword2"],
+  "fabrication_flags": ["any bullet that smells fabricated"],
+  "weak_bullets": [
+    {{
+      "path": "workExperience[i].description[j]",
+      "text": "the weak bullet text",
+      "problem": "why it hurts",
+      "fix": "concrete rewrite or 'REMOVE'"
+    }}
+  ],
+  "missing_from_resume": ["specific thing the JD wants but resume doesn't show"],
+  "top_3_fixes": ["most impactful fix first", "second", "third"],
+  "pass": true or false
+}}
+
+"match_score" = mean of all 7 panel_scores. "pass" is true ONLY when match_score >= 85, verdict is INTERVIEW, and fabrication_flags is empty. Be strict."""

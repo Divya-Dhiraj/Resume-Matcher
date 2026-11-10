@@ -78,7 +78,8 @@ export default function TailorPage() {
   } = useStatusCache();
 
   // Check if LLM is configured
-  const isLlmConfigured = !statusLoading && systemStatus?.llm_configured;
+  const isLlmConfigured =
+    !statusLoading && (systemStatus?.llm_configured || systemStatus?.llm_healthy);
 
   useEffect(() => {
     const storedId = localStorage.getItem('master_resume_id');

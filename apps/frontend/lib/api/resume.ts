@@ -396,6 +396,58 @@ export async function retryProcessing(resumeId: string): Promise<ResumeUploadRes
   return res.json();
 }
 
+/** Single-pass hiring panel review of a tailored resume against a JD */
+export async function reviewResume(
+  resumeId: string,
+  jobId: string
+): Promise<{
+  match_score: number;
+  verdict: string;
+  missing_keywords: string[];
+  weak_bullets: string[];
+  top_3_fixes: string[];
+  pass: boolean;
+}> {
+  const res = await apiPost('/resumes/review', { resume_id: resumeId, job_id: jobId });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Review failed (status ${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
+/** Closed-loop auto-tailor: tailor → review → re-tailor (max 3 rounds) */
+export async function autoLoopTailor(
+  resumeId: string,
+  jobId: string,
+  promptId?: string
+): Promise<{
+  rounds: Array<{
+    round: number;
+    match_score: number;
+    verdict: string;
+    top_3_fixes: string[];
+    missing_keywords: string[];
+    passed: boolean;
+  }>;
+  total_rounds: number;
+  final_passed: boolean;
+  final_score: number;
+  preview: Record<string, unknown> | null;
+  resume_id: string;
+}> {
+  const res = await apiPost(
+    '/resumes/improve/auto-loop',
+    { resume_id: resumeId, job_id: jobId, prompt_id: promptId || 'keywords' },
+    { timeout: DEFAULT_TIMEOUT_MS }
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Auto-loop failed (status ${res.status}): ${text}`);
+  }
+  return res.json();
+}
+
 /** Fetches the job description used to tailor a resume */
 export async function fetchJobDescription(
   resumeId: string

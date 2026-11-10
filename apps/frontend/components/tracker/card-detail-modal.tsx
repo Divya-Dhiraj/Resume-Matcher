@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
 import Pencil from 'lucide-react/dist/esm/icons/pencil';
+import Trash2 from 'lucide-react/dist/esm/icons/trash-2';
 import {
   Dialog,
   DialogContent,
@@ -16,7 +17,13 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { useTranslations } from '@/lib/i18n';
-import { getApplicationDetail, updateApplication, type ApplicationDetail } from '@/lib/api/tracker';
+import {
+  getApplicationDetail,
+  updateApplication,
+  updateJobContent,
+  deleteApplication,
+  type ApplicationDetail,
+} from '@/lib/api/tracker';
 
 interface CardDetailModalProps {
   applicationId: string | null;
@@ -37,7 +44,12 @@ export function CardDetailModal({
   const [loading, setLoading] = useState(false);
   const [notes, setNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
+  const [editingJd, setEditingJd] = useState(false);
+  const [jdDraft, setJdDraft] = useState('');
+  const [savingJd, setSavingJd] = useState(false);
+  const [jdError, setJdError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || !applicationId) {
@@ -85,6 +97,42 @@ export function CardDetailModal({
     }
   };
 
+  const handleStartEditJd = () => {
+    setJdDraft(detail?.job_content ?? '');
+    setEditingJd(true);
+    setJdError(null);
+  };
+
+  const handleSaveJd = async () => {
+    if (!detail?.job_id || !jdDraft.trim()) return;
+    setSavingJd(true);
+    setJdError(null);
+    try {
+      await updateJobContent(detail.job_id, jdDraft.trim());
+      setDetail((prev) => (prev ? { ...prev, job_content: jdDraft.trim() } : prev));
+      setEditingJd(false);
+      onUpdated();
+    } catch {
+      setJdError(t('common.error'));
+    } finally {
+      setSavingJd(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!applicationId) return;
+    setDeleting(true);
+    try {
+      await deleteApplication(applicationId);
+      onUpdated();
+      onOpenChange(false);
+    } catch {
+      setNotesError(t('common.error'));
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const resumeAvailable = Boolean(detail?.resume);
 
   return (
@@ -116,10 +164,62 @@ export function CardDetailModal({
             </div>
 
             <div className="space-y-1">
-              <Label>{t('tracker.modal.jobDescription')}</Label>
-              <div className="max-h-48 overflow-y-auto whitespace-pre-wrap border border-black bg-background p-3 text-sm">
-                {detail.job_content || t('tracker.modal.noJobDescription')}
+              <div className="flex items-center justify-between">
+                <Label>{t('tracker.modal.jobDescription')}</Label>
+                {!editingJd && detail.job_content && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleStartEditJd}
+                    className="h-6 px-2 font-mono text-xs"
+                  >
+                    <Pencil className="mr-1 h-3 w-3" />
+                    {t('tracker.modal.editJd')}
+                  </Button>
+                )}
               </div>
+              {editingJd ? (
+                <>
+                  <Textarea
+                    value={jdDraft}
+                    onChange={(e) => setJdDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') e.stopPropagation();
+                    }}
+                    rows={8}
+                    className="text-sm"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    {jdError && (
+                      <span className="font-mono text-xs text-destructive">{jdError}</span>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingJd(false)}
+                      disabled={savingJd}
+                    >
+                      {t('tracker.modal.cancelEditJd')}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleSaveJd}
+                      disabled={savingJd || !jdDraft.trim()}
+                    >
+                      {savingJd ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        t('tracker.modal.saveJd')
+                      )}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <div className="max-h-48 overflow-y-auto whitespace-pre-wrap border border-black bg-background p-3 text-sm">
+                  {detail.job_content || t('tracker.modal.noJobDescription')}
+                </div>
+              )}
             </div>
 
             <div className="space-y-1">
@@ -163,7 +263,22 @@ export function CardDetailModal({
           </p>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="flex items-center justify-between sm:justify-between">
+          <Button
+            variant="outline"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="border-destructive text-destructive hover:bg-destructive hover:text-white"
+          >
+            {deleting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Trash2 className="h-4 w-4" />
+                {t('tracker.modal.delete')}
+              </>
+            )}
+          </Button>
           <Button
             onClick={() => {
               if (detail?.resume_id) router.push(`/builder?id=${detail.resume_id}`);

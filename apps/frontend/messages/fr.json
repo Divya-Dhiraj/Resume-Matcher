@@ -1012,7 +1012,11 @@
       "saveNotes": "Enregistrer les notes",
       "resumeUnavailable": "Le CV soumis n'est plus disponible.",
       "loadFailed": "Impossible de charger cette candidature.",
-      "editResume": "Modifier le CV"
+      "editResume": "Modifier le CV",
+      "delete": "Supprimer",
+      "editJd": "Modifier",
+      "cancelEditJd": "Annuler",
+      "saveJd": "Enregistrer JD"
     },
     "bulk": {
       "selected": "{count} sélectionné(s)",

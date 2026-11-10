@@ -57,6 +57,7 @@ export interface ApplicationUpdate {
   company?: string;
   role?: string;
   applied_at?: string;
+  resume_id?: string;
 }
 
 export interface ApplicationActionResponse {
@@ -142,6 +143,15 @@ export async function bulkUpdateStatus(
 export async function deleteApplication(id: string): Promise<void> {
   const res = await apiDelete(`/applications/${id}`);
   await asJson<ApplicationActionResponse>(res, 'Failed to delete application');
+}
+
+// Update a job description's content.
+export async function updateJobContent(jobId: string, content: string): Promise<void> {
+  const res = await apiPatch(`/jobs/${jobId}`, { content });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to update job description (status ${res.status}): ${text}`);
+  }
 }
 
 // Delete many cards.

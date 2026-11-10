@@ -199,7 +199,7 @@ class TestGenerateResumeDiffs:
 
     @patch("app.services.improver.complete_json", new_callable=AsyncMock)
     async def test_strategy_selection_full(self, mock_llm, sample_resume, sample_job_keywords):
-        """Full strategy should include 'targeted adjustments' instruction."""
+        """Full strategy should include 'adjacent extrapolation' instruction."""
         mock_llm.return_value = {"changes": [], "strategy_notes": "test"}
         await generate_resume_diffs(
             original_resume="# Resume",
@@ -209,7 +209,7 @@ class TestGenerateResumeDiffs:
             original_resume_data=sample_resume,
         )
         prompt = mock_llm.call_args.kwargs.get("prompt") or mock_llm.call_args.args[0]
-        assert "targeted adjustments" in prompt.lower()
+        assert "adjacent extrapolation" in prompt.lower()
 
 
 class TestSkillTargetPlanning:
