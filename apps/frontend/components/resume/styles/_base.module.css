@@ -288,15 +288,15 @@
     page-break-after: avoid !important;
   }
 
-  /* Keep section header together with its first item */
-  .resume-section-title + .resume-items > *:first-child,
-  .resume-section-title-sm + .resume-items > *:first-child,
+  /* Keep section header together with its first item — but only for
+     lightweight followers (text, lists). For .resume-items containers
+     and individual .resume-item entries we rely on the title's own
+     break-after:avoid, which is enough to prevent orphaned headings
+     without forcing a large first entry onto the next page. */
   .resume-section-title + p,
   .resume-section-title-sm + p,
   .resume-section-title + ul,
-  .resume-section-title-sm + ul,
-  .resume-section-title + .resume-item,
-  .resume-section-title-sm + .resume-item {
+  .resume-section-title-sm + ul {
     break-before: avoid !important;
     page-break-before: avoid !important;
   }

@@ -28,18 +28,14 @@ export interface CoverLetterPreviewProps {
 
 export function CoverLetterPreview({
   content,
-  personalInfo,
+  personalInfo: _pi,
   pageSize = 'A4',
   className,
 }: CoverLetterPreviewProps) {
-  const { t, locale } = useTranslations();
-  const today = new Intl.DateTimeFormat(locale, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  }).format(new Date());
+  const { t } = useTranslations();
 
-  // Parse content into paragraphs
+  // Parse content into paragraphs — the LLM-generated text includes its own
+  // header block (sender info, date, recipient, subject, salutation).
   const paragraphs = content.split('\n\n').filter((p) => p.trim().length > 0);
 
   return (
@@ -51,32 +47,12 @@ export function CoverLetterPreview({
         className
       )}
     >
-      {/* Letter Content */}
       <div
         className={cn('p-8 md:p-12', pageSize === 'A4' ? 'min-h-[297mm]' : 'min-h-[11in]')}
         style={{
           maxWidth: pageSize === 'A4' ? '210mm' : '8.5in',
         }}
       >
-        {/* Header - Personal Info */}
-        <header className="mb-8 border-b-2 border-black pb-4">
-          <h1 className="font-serif text-2xl font-bold tracking-tight">
-            {personalInfo.name || t('coverLetter.preview.defaultName')}
-          </h1>
-          <div className="mt-2 font-mono text-xs text-ink-soft flex flex-wrap gap-x-4 gap-y-1">
-            {personalInfo.email && <span>{personalInfo.email}</span>}
-            {personalInfo.phone && <span>{personalInfo.phone}</span>}
-            {personalInfo.location && <span>{personalInfo.location}</span>}
-            {personalInfo.linkedin && <span>{personalInfo.linkedin}</span>}
-          </div>
-        </header>
-
-        {/* Date */}
-        <div className="mb-8">
-          <p className="font-mono text-sm text-ink-soft">{today}</p>
-        </div>
-
-        {/* Body */}
         <div className="space-y-4">
           {paragraphs.length > 0 ? (
             paragraphs.map((para, idx) => (

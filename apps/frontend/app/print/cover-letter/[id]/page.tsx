@@ -24,20 +24,7 @@ type PageProps = {
   }>;
 };
 
-interface PersonalInfo {
-  name?: string;
-  email?: string;
-  phone?: string;
-  location?: string;
-  linkedin?: string;
-}
-
-interface CoverLetterData {
-  coverLetter: string;
-  personalInfo: PersonalInfo;
-}
-
-async function fetchCoverLetterData(resumeId: string): Promise<CoverLetterData> {
+async function fetchCoverLetter(resumeId: string): Promise<string> {
   const res = await fetch(`${API_BASE}/resumes?resume_id=${encodeURIComponent(resumeId)}`, {
     cache: 'no-store',
   });
@@ -45,18 +32,9 @@ async function fetchCoverLetterData(resumeId: string): Promise<CoverLetterData> 
     throw new Error(`Failed to load resume (status ${res.status}).`);
   }
   const payload = (await res.json()) as {
-    data: {
-      cover_letter?: string;
-      processed_resume?: {
-        personalInfo?: PersonalInfo;
-      };
-    };
+    data: { cover_letter?: string };
   };
-
-  return {
-    coverLetter: payload.data.cover_letter || '',
-    personalInfo: payload.data.processed_resume?.personalInfo || {},
-  };
+  return payload.data.cover_letter || '';
 }
 
 function parsePageSize(value: string | undefined): PageSize {
@@ -74,19 +52,7 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
   const pageDims = PAGE_DIMENSIONS[pageSize];
   const locale = resolveLocale(resolvedSearchParams?.lang);
 
-  // Fetch cover letter data from API (same pattern as resume)
-  const { coverLetter, personalInfo } = await fetchCoverLetterData(resolvedParams.id);
-
-  // Margins are applied by Playwright's PDF renderer (not in CSS)
-  // This keeps them consistent on every page
-
-  // Get today's date formatted
-  const today = new Date().toLocaleDateString(locale, {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  const nameFallback = translate(locale, 'resume.defaults.name');
+  const coverLetter = await fetchCoverLetter(resolvedParams.id);
 
   // Split cover letter into paragraphs — must match preview component logic
   const paragraphs = coverLetter.split('\n\n').filter((p) => p.trim().length > 0);
@@ -96,62 +62,14 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
       className="cover-letter-print bg-white"
       style={{
         width: `${pageDims.width}mm`,
-        maxHeight: `${pageDims.height}mm`,
         boxSizing: 'border-box',
         fontFamily: 'Georgia, "Times New Roman", serif',
         color: '#000000',
-        overflow: 'hidden',
       }}
     >
-      {/* Header - Personal Info */}
-      <header
-        style={{
-          marginBottom: '6mm',
-          paddingBottom: '3mm',
-          borderBottom: '2px solid #000',
-        }}
-      >
-        <h1
-          style={{
-            fontSize: '16pt',
-            fontWeight: 'bold',
-            margin: 0,
-            letterSpacing: '-0.02em',
-          }}
-        >
-          {personalInfo.name || nameFallback}
-        </h1>
-        <div
-          style={{
-            marginTop: '1.5mm',
-            fontSize: '8.5pt',
-            fontFamily: '"SF Mono", "Cascadia Code", "Fira Code", monospace',
-            color: '#666',
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '4mm',
-          }}
-        >
-          {personalInfo.email && <span>{personalInfo.email}</span>}
-          {personalInfo.phone && <span>{personalInfo.phone}</span>}
-          {personalInfo.location && <span>{personalInfo.location}</span>}
-          {personalInfo.linkedin && <span>{personalInfo.linkedin}</span>}
-        </div>
-      </header>
-
-      {/* Date */}
-      <div
-        style={{
-          marginBottom: '6mm',
-          fontSize: '9pt',
-          fontFamily: '"SF Mono", "Cascadia Code", "Fira Code", monospace',
-          color: '#666',
-        }}
-      >
-        {today}
-      </div>
-
-      {/* Body */}
+      {/* Body — the LLM-generated text includes its own header block
+         (sender info, date, recipient, subject line, salutation) so we
+         render the raw paragraphs directly without a template header. */}
       <div style={{ lineHeight: '1.5' }}>
         {paragraphs.length > 0 ? (
           paragraphs.map((para, idx) => (
