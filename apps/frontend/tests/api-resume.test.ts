@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { generateInterviewPrep } from '@/lib/api/resume';
+import { generateInterviewPrep, previewImproveResume } from '@/lib/api/resume';
 
 const interviewPrep = {
   role_fit_analysis: ['Backend API experience fits the role.'],
@@ -57,5 +57,35 @@ describe('resume API', () => {
     await expect(generateInterviewPrep('res-123')).rejects.toThrow(
       'Failed to generate interview preparation'
     );
+  });
+
+  it('previewImproveResume sends pipeline options when provided', async () => {
+    const mockResult = { data: { request_id: 'r1', resume_preview: {} } };
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(mockResult), { status: 200 }));
+
+    await previewImproveResume('res-1', 'job-1', 'keywords', undefined, 'aggressive', {
+      outputLanguage: 'de',
+      includeCoverLetter: true,
+      includeReview: true,
+    });
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.output_language).toBe('de');
+    expect(body.include_cover_letter).toBe(true);
+    expect(body.include_review).toBe(true);
+  });
+
+  it('previewImproveResume omits pipeline options when not provided', async () => {
+    const mockResult = { data: { request_id: 'r1', resume_preview: {} } };
+    fetchMock.mockResolvedValue(new Response(JSON.stringify(mockResult), { status: 200 }));
+
+    await previewImproveResume('res-1', 'job-1');
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.output_language).toBeUndefined();
+    expect(body.include_cover_letter).toBeUndefined();
+    expect(body.include_review).toBeUndefined();
   });
 });

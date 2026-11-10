@@ -17,11 +17,23 @@ import { fetchPromptConfig, type PromptOption } from '@/lib/api/config';
 import { getPreviewErrorMessage } from '@/lib/utils/preview-error';
 import { Dropdown } from '@/components/ui/dropdown';
 import { useStatusCache } from '@/lib/context/status-cache';
-import { Loader2, ArrowLeft, AlertTriangle, Settings } from 'lucide-react';
+import {
+  Loader2,
+  ArrowLeft,
+  AlertTriangle,
+  Settings,
+  Zap,
+  RefreshCw,
+  CheckCircle,
+  Save,
+  FileText,
+} from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
 import { DiffPreviewModal } from '@/components/tailor/diff-preview-modal';
 import { ATSScoreCard } from '@/components/tailor/ats-score-card';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+
+type OutputLanguage = 'en' | 'de';
 
 export default function TailorPage() {
   const { t } = useTranslations();
@@ -34,19 +46,30 @@ export default function TailorPage() {
   const [extrapolationMode, setExtrapolationMode] = useState<'aggressive' | 'conservative'>(
     'aggressive'
   );
+  const [outputLanguage, setOutputLanguage] = useState<OutputLanguage>('en');
   const [promptLoading, setPromptLoading] = useState(false);
   const hasUserSelectedPrompt = useRef(false);
   const missingDiffConfirmInFlight = useRef(false);
 
-  // Diff preview modal state
-  const [showDiffModal, setShowDiffModal] = useState(false);
+  // Pipeline result state
   const [pendingResult, setPendingResult] = useState<ImprovedResult | null>(null);
+  const [showDiffModal, setShowDiffModal] = useState(false);
   const [diffConfirmError, setDiffConfirmError] = useState<string | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [showRegenerateDialog, setShowRegenerateDialog] = useState(false);
   const [showMissingDiffDialog, setShowMissingDiffDialog] = useState(false);
   const [missingDiffResult, setMissingDiffResult] = useState<ImprovedResult | null>(null);
   const [missingDiffError, setMissingDiffError] = useState<string | null>(null);
+
+  // Re-tailor from keyword chips
+  const [confirmedSkills, setConfirmedSkills] = useState<Set<string>>(new Set());
+  const [retailorLoading, setRetailorLoading] = useState(false);
+
+  // Track the current job ID for re-tailor
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
+
+  // Cover letter expand/collapse
+  const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
 
   // Elapsed timer for long operations
   const [elapsed, setElapsed] = useState(0);
@@ -80,7 +103,6 @@ export default function TailorPage() {
     incrementResumes,
   } = useStatusCache();
 
-  // Check if LLM is configured
   const isLlmConfigured =
     !statusLoading && (systemStatus?.llm_configured || systemStatus?.llm_healthy);
 
@@ -175,20 +197,25 @@ export default function TailorPage() {
     return null;
   };
 
-  const runGenerate = async (resumeId: string, description: string) => {
+  const runGenerate = async (resumeId: string, description: string, skills?: string[]) => {
     try {
-      // 1. Upload Job Description
-      // The API expects an array of strings
-      const jobId = await uploadJobDescriptions([description], resumeId);
-      incrementJobs(); // Update cached counter
+      const jobId = currentJobId ?? (await uploadJobDescriptions([description], resumeId));
+      if (!currentJobId) {
+        incrementJobs();
+        setCurrentJobId(jobId);
+      }
 
-      // 2. Preview Resume
       const result = await previewImproveResume(
         resumeId,
         jobId,
         selectedPromptId,
-        undefined,
-        extrapolationMode
+        skills,
+        extrapolationMode,
+        {
+          outputLanguage,
+          includeCoverLetter: true,
+          includeReview: true,
+        }
       );
 
       if (!result?.data?.diff_summary || !result?.data?.detailed_changes) {
@@ -202,10 +229,11 @@ export default function TailorPage() {
         return;
       }
 
-      // 3. Show diff preview modal
       setDiffConfirmError(null);
       setMissingDiffError(null);
       setPendingResult(result);
+      setConfirmedSkills(new Set());
+      setCoverLetterExpanded(false);
       setShowDiffModal(true);
     } catch (err) {
       console.error(err);
@@ -221,19 +249,40 @@ export default function TailorPage() {
       setError(validationError);
       return;
     }
-    const resumeId = masterResumeId;
     setIsLoading(true);
     setError(null);
+    setCurrentJobId(null);
     startTimer();
     try {
-      await runGenerate(resumeId, trimmedDescription);
+      await runGenerate(masterResumeId, trimmedDescription);
     } finally {
       setIsLoading(false);
       stopTimer();
     }
   };
 
-  // User confirms changes
+  const handleRetailor = async () => {
+    if (!masterResumeId || !currentJobId || confirmedSkills.size === 0) return;
+    setRetailorLoading(true);
+    setError(null);
+    startTimer();
+    try {
+      await runGenerate(masterResumeId, jobDescription.trim(), Array.from(confirmedSkills));
+    } finally {
+      setRetailorLoading(false);
+      stopTimer();
+    }
+  };
+
+  const toggleSkill = useCallback((skill: string) => {
+    setConfirmedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(skill)) next.delete(skill);
+      else next.add(skill);
+      return next;
+    });
+  }, []);
+
   const handleConfirmChanges = async () => {
     if (!pendingResult || isConfirming) return;
 
@@ -255,7 +304,6 @@ export default function TailorPage() {
     }
   };
 
-  // User rejects changes
   const handleRejectChanges = () => {
     setShowDiffModal(false);
     setPendingResult(null);
@@ -265,8 +313,6 @@ export default function TailorPage() {
 
   const handleCloseDiffModal = () => {
     setShowDiffModal(false);
-    setPendingResult(null);
-    setDiffConfirmError(null);
   };
 
   const handleCloseMissingDiffDialog = () => {
@@ -305,17 +351,29 @@ export default function TailorPage() {
       setError(validationError);
       return;
     }
-    const resumeId = masterResumeId;
     setIsLoading(true);
     setError(null);
     startTimer();
     try {
-      await runGenerate(resumeId, trimmedDescription);
+      await runGenerate(masterResumeId, trimmedDescription);
     } finally {
       setIsLoading(false);
       stopTimer();
     }
   };
+
+  const review = pendingResult?.data?.review;
+  const coverLetter = pendingResult?.data?.cover_letter;
+
+  const scoreColor = (score: number) =>
+    score >= 85 ? 'text-green-700' : score >= 60 ? 'text-yellow-700' : 'text-red-700';
+
+  const scoreBg = (score: number) =>
+    score >= 85
+      ? 'bg-green-50 border-green-200'
+      : score >= 60
+        ? 'bg-yellow-50 border-yellow-200'
+        : 'bg-red-50 border-red-200';
 
   return (
     <div className="min-h-screen w-full bg-[#F6F5EE] flex flex-col items-center justify-center p-4 md:p-8 font-sans">
@@ -399,40 +457,69 @@ export default function TailorPage() {
             disabled={isLoading || promptLoading}
           />
 
-          {/* Extrapolation mode toggle */}
-          <div className="flex items-center gap-3">
-            <span className="font-mono text-xs uppercase text-ink-soft">Extrapolation:</span>
-            <div className="flex border border-black">
-              <button
-                type="button"
-                onClick={() => setExtrapolationMode('conservative')}
-                className={`px-3 py-1 font-mono text-xs uppercase transition-colors ${
-                  extrapolationMode === 'conservative'
-                    ? 'bg-ink text-white'
-                    : 'bg-white text-ink hover:bg-paper-tint'
-                }`}
-                disabled={isLoading}
-              >
-                Conservative
-              </button>
-              <button
-                type="button"
-                onClick={() => setExtrapolationMode('aggressive')}
-                className={`px-3 py-1 font-mono text-xs uppercase border-l border-black transition-colors ${
-                  extrapolationMode === 'aggressive'
-                    ? 'bg-ink text-white'
-                    : 'bg-white text-ink hover:bg-paper-tint'
-                }`}
-                disabled={isLoading}
-              >
-                Aggressive
-              </button>
+          {/* Extrapolation mode + Language toggle row */}
+          <div className="flex flex-wrap items-center gap-4">
+            {/* Extrapolation mode */}
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs uppercase text-ink-soft">Mode:</span>
+              <div className="flex border border-black">
+                <button
+                  type="button"
+                  onClick={() => setExtrapolationMode('conservative')}
+                  className={`px-3 py-1 font-mono text-xs uppercase transition-colors ${
+                    extrapolationMode === 'conservative'
+                      ? 'bg-ink text-white'
+                      : 'bg-white text-ink hover:bg-paper-tint'
+                  }`}
+                  disabled={isLoading}
+                >
+                  Conservative
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setExtrapolationMode('aggressive')}
+                  className={`px-3 py-1 font-mono text-xs uppercase border-l border-black transition-colors ${
+                    extrapolationMode === 'aggressive'
+                      ? 'bg-ink text-white'
+                      : 'bg-white text-ink hover:bg-paper-tint'
+                  }`}
+                  disabled={isLoading}
+                >
+                  Aggressive
+                </button>
+              </div>
             </div>
-            <span className="font-mono text-[10px] text-ink-soft">
-              {extrapolationMode === 'aggressive'
-                ? 'Maximum JD keyword coverage via adjacent extrapolation'
-                : 'Only rephrase what is clearly supported by the resume'}
-            </span>
+
+            {/* Output language */}
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs uppercase text-ink-soft">Language:</span>
+              <div className="flex border border-black">
+                <button
+                  type="button"
+                  onClick={() => setOutputLanguage('en')}
+                  className={`px-3 py-1 font-mono text-xs uppercase transition-colors ${
+                    outputLanguage === 'en'
+                      ? 'bg-ink text-white'
+                      : 'bg-white text-ink hover:bg-paper-tint'
+                  }`}
+                  disabled={isLoading}
+                >
+                  English
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOutputLanguage('de')}
+                  className={`px-3 py-1 font-mono text-xs uppercase border-l border-black transition-colors ${
+                    outputLanguage === 'de'
+                      ? 'bg-ink text-white'
+                      : 'bg-white text-ink hover:bg-paper-tint'
+                  }`}
+                  disabled={isLoading}
+                >
+                  Deutsch
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="relative">
@@ -483,10 +570,201 @@ export default function TailorPage() {
         </div>
       </div>
 
-      {/* ATS Score Breakdown — shown once a preview result is available */}
-      {pendingResult?.data?.ats_score && (
-        <div className="w-full max-w-4xl mt-6">
-          <ATSScoreCard atsScore={pendingResult.data.ats_score} />
+      {/* ============ PIPELINE RESULTS (shown after generation) ============ */}
+      {pendingResult && (
+        <div className="w-full max-w-4xl mt-6 space-y-6">
+          {/* ATS Score Breakdown */}
+          {pendingResult.data.ats_score && <ATSScoreCard atsScore={pendingResult.data.ats_score} />}
+
+          {/* JD Match Review — inline */}
+          {review && (
+            <div className="bg-white border border-black shadow-sw-default p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`border px-4 py-2 font-mono text-2xl font-bold ${scoreBg(review.match_score)} ${scoreColor(review.match_score)}`}
+                  >
+                    {review.match_score}/100
+                  </div>
+                  <div>
+                    <p
+                      className={`font-mono text-sm font-bold uppercase ${review.verdict === 'INTERVIEW' ? 'text-green-700' : 'text-red-700'}`}
+                    >
+                      {review.verdict}
+                    </p>
+                    <p className="font-mono text-xs text-ink-soft">
+                      {review.pass ? 'Resume passes all checks' : 'Improvements recommended'}
+                    </p>
+                  </div>
+                </div>
+                <span className="font-mono text-xs uppercase text-ink-soft">JD Match Review</span>
+              </div>
+
+              {/* Panel scores */}
+              {review.panel_scores && (
+                <div className="grid grid-cols-4 gap-2 mb-4">
+                  {Object.entries(review.panel_scores).map(([name, score]) => (
+                    <div key={name} className="border border-paper-tint p-2 bg-white">
+                      <p className="font-mono text-[10px] uppercase text-ink-soft truncate">
+                        {name.replace('_', ' ')}
+                      </p>
+                      <p className={`font-mono text-sm font-bold ${scoreColor(score as number)}`}>
+                        {score as number}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Top fixes */}
+              {review.top_3_fixes && review.top_3_fixes.length > 0 && (
+                <div className="mb-4">
+                  <p className="font-mono text-xs font-bold uppercase mb-2 flex items-center gap-1">
+                    <Zap className="w-3 h-3" />
+                    Top improvements
+                  </p>
+                  <ol className="list-decimal list-inside space-y-1">
+                    {review.top_3_fixes.map((fix, i) => (
+                      <li key={i} className="font-serif text-sm text-ink-soft">
+                        {fix}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+              )}
+
+              {/* Missing keywords — selectable chips */}
+              {review.missing_keywords && review.missing_keywords.length > 0 && (
+                <div className="mb-4">
+                  <p className="font-mono text-xs font-bold uppercase mb-2">
+                    Missing keywords{' '}
+                    <span className="font-normal normal-case text-ink-soft">
+                      — click skills you know
+                    </span>
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {review.missing_keywords.map((kw, i) => {
+                      const isConfirmed = confirmedSkills.has(kw);
+                      return (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => toggleSkill(kw)}
+                          className={`border px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer ${
+                            isConfirmed
+                              ? 'border-green-500 bg-green-50 text-green-700'
+                              : 'border-red-300 bg-red-50 text-red-700 hover:border-green-400 hover:bg-green-50/50'
+                          }`}
+                        >
+                          {isConfirmed ? '✓ ' : ''}
+                          {kw}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {confirmedSkills.size > 0 && (
+                    <button
+                      onClick={handleRetailor}
+                      disabled={retailorLoading || isLoading}
+                      className="mt-3 border border-black bg-ink text-white px-4 py-1.5 font-mono text-xs uppercase hover:bg-ink/80 transition-colors disabled:opacity-50 flex items-center gap-2"
+                    >
+                      {retailorLoading ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-3 h-3" />
+                      )}
+                      Re-tailor with {confirmedSkills.size} confirmed skill
+                      {confirmedSkills.size !== 1 ? 's' : ''}
+                      {elapsed > 0 && retailorLoading && (
+                        <span className="opacity-70 ml-1">{elapsed}s</span>
+                      )}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Missing from resume */}
+              {review.missing_from_resume && review.missing_from_resume.length > 0 && (
+                <div>
+                  <p className="font-mono text-xs font-bold uppercase mb-2">
+                    Not demonstrated in resume
+                  </p>
+                  <ul className="list-disc list-inside space-y-1">
+                    {review.missing_from_resume.map((item, i) => (
+                      <li key={i} className="font-serif text-sm text-ink-soft">
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Cover Letter Preview */}
+          {coverLetter && (
+            <div className="bg-white border border-black shadow-sw-default">
+              <button
+                type="button"
+                onClick={() => setCoverLetterExpanded(!coverLetterExpanded)}
+                className="w-full flex items-center justify-between px-6 py-4 hover:bg-paper-tint transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  <span className="font-mono text-sm font-bold uppercase">Cover Letter</span>
+                  <span className="font-mono text-xs text-ink-soft">
+                    ({outputLanguage === 'de' ? 'Deutsch' : 'English'})
+                  </span>
+                </div>
+                <span className="font-mono text-xs text-ink-soft">
+                  {coverLetterExpanded ? '▲ Collapse' : '▼ Expand'}
+                </span>
+              </button>
+              {coverLetterExpanded && (
+                <div className="px-6 pb-6 border-t border-paper-tint">
+                  <div className="mt-4 font-serif text-sm whitespace-pre-wrap leading-relaxed">
+                    {coverLetter}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Save button — confirms resume + creates tracker entry */}
+          <div className="flex gap-3">
+            <Button
+              size="lg"
+              onClick={handleConfirmChanges}
+              disabled={isConfirming || isLoading || retailorLoading}
+              className="flex-1"
+            >
+              {isConfirming ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5" />
+                  Save — Confirm Resume, Cover Letter &amp; Add to Tracker
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => setShowDiffModal(true)}
+              disabled={isConfirming || isLoading}
+            >
+              View Changes
+            </Button>
+          </div>
+
+          {diffConfirmError && (
+            <div className="p-4 bg-red-50 border border-red-200 text-red-700 text-sm font-mono flex items-center gap-2">
+              <span>!</span> {diffConfirmError}
+            </div>
+          )}
         </div>
       )}
 

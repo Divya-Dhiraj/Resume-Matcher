@@ -813,7 +813,7 @@ async def improve_resume_preview_endpoint(
     if not job:
         raise HTTPException(status_code=404, detail="Job description not found")
 
-    language = get_content_language()
+    language = request.output_language or get_content_language()
     prompt_id = request.prompt_id or _get_default_prompt_id()
 
     stage = "load_job_keywords"
@@ -847,6 +847,27 @@ async def improve_resume_preview_endpoint(
         )
     except Exception as e:
         _raise_improve_error("preview", stage, e, detail)
+
+
+async def _inline_review(
+    improved_data: dict[str, Any],
+    job_content: str,
+) -> dict[str, Any]:
+    """Run the hiring-panel review on in-memory resume data (no DB lookup)."""
+    from app.llm import complete_json
+    from app.prompts.templates import RESUME_REVIEW_PROMPT
+
+    resume_str = json.dumps(improved_data)
+    prompt = RESUME_REVIEW_PROMPT.format(
+        job_description=job_content,
+        resume_data=resume_str,
+    )
+    return await complete_json(
+        prompt=prompt,
+        system_prompt="You are a brutally honest hiring panel. Output only valid JSON.",
+        max_tokens=2048,
+        schema_type="enrichment",
+    )
 
 
 async def _improve_preview_flow(
@@ -1085,6 +1106,37 @@ async def _improve_preview_flow(
         response_warnings.append(f"Could not calculate changes: {diff_error}")
     improvements = generate_improvements(job_keywords)
 
+    # Generate cover letter and/or review inline when requested
+    cover_letter = None
+    review_result = None
+    pipeline_tasks: list[Awaitable[Any]] = []
+    pipeline_labels: list[str] = []
+
+    if request.include_cover_letter:
+        pipeline_tasks.append(
+            generate_cover_letter(improved_data, job["content"], language)
+        )
+        pipeline_labels.append("cover_letter")
+
+    if request.include_review:
+        pipeline_tasks.append(
+            _inline_review(improved_data, job["content"])
+        )
+        pipeline_labels.append("review")
+
+    if pipeline_tasks:
+        pipeline_results = await asyncio.gather(
+            *pipeline_tasks, return_exceptions=True
+        )
+        for label, result in zip(pipeline_labels, pipeline_results):
+            if isinstance(result, Exception):
+                logger.warning("Preview pipeline %s failed: %s", label, result)
+                response_warnings.append(f"{label.replace('_', ' ').title()} failed")
+            elif label == "cover_letter":
+                cover_letter = result
+            elif label == "review":
+                review_result = result
+
     request_id = str(uuid4())
     return ImproveResumeResponse(
         request_id=request_id,
@@ -1102,7 +1154,7 @@ async def _improve_preview_flow(
             ],
             markdownOriginal=resume["content"],
             markdownImproved=improved_text,
-            cover_letter=None,
+            cover_letter=cover_letter,
             outreach_message=None,
             interview_prep=None,
             diff_summary=diff_summary,
@@ -1114,6 +1166,7 @@ async def _improve_preview_flow(
                 refinement_result,
                 refinement_successful,
             ),
+            review=review_result,
             warnings=response_warnings,
             refinement_attempted=refinement_attempted,
             refinement_successful=refinement_successful,

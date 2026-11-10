@@ -175,7 +175,12 @@ export async function previewImproveResume(
   jobId: string,
   promptId?: string,
   confirmedSkills?: string[],
-  extrapolationMode?: 'aggressive' | 'conservative'
+  extrapolationMode?: 'aggressive' | 'conservative',
+  options?: {
+    outputLanguage?: string;
+    includeCoverLetter?: boolean;
+    includeReview?: boolean;
+  }
 ): Promise<ImprovedResult> {
   return postImprove('/resumes/improve/preview', {
     resume_id: resumeId,
@@ -183,6 +188,9 @@ export async function previewImproveResume(
     prompt_id: promptId ?? null,
     ...(confirmedSkills && confirmedSkills.length > 0 ? { confirmed_skills: confirmedSkills } : {}),
     ...(extrapolationMode ? { extrapolation_mode: extrapolationMode } : {}),
+    ...(options?.outputLanguage ? { output_language: options.outputLanguage } : {}),
+    ...(options?.includeCoverLetter ? { include_cover_letter: true } : {}),
+    ...(options?.includeReview ? { include_review: true } : {}),
   });
 }
 

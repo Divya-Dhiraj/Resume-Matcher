@@ -584,6 +584,9 @@ class ImproveResumeRequest(BaseModel):
     prompt_id: str | None = None
     confirmed_skills: list[str] | None = None
     extrapolation_mode: str | None = None
+    output_language: str | None = None
+    include_cover_letter: bool = False
+    include_review: bool = False
 
 
 class ImprovementSuggestion(BaseModel):
@@ -716,6 +719,9 @@ class ImproveResumeData(BaseModel):
 
     # ATS score breakdown
     ats_score: "ATSScore | None" = None
+
+    # Inline JD review (hiring panel)
+    review: dict[str, Any] | None = None
 
     # Warning and status fields for transparency
     warnings: list[str] = Field(default_factory=list)

@@ -138,6 +138,21 @@ export interface Data {
   diff_summary?: ResumeDiffSummary;
   detailed_changes?: ResumeFieldDiff[];
   ats_score?: ATSScore;
+  review?: {
+    match_score: number;
+    verdict: string;
+    missing_keywords: string[];
+    weak_bullets: Array<{
+      path?: string;
+      text?: string;
+      problem?: string;
+      fix?: string;
+    }>;
+    top_3_fixes: string[];
+    pass: boolean;
+    panel_scores?: Record<string, number>;
+    missing_from_resume?: string[];
+  };
 }
 
 export interface ImprovedResult {
