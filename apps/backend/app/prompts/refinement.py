@@ -138,15 +138,15 @@ AI_PHRASE_REPLACEMENTS: dict[str, str] = {
 KEYWORD_INJECTION_PROMPT = """Inject the following keywords into this resume by reframing the candidate's existing experience in the job description's language. Target EVERY section (summary, work experience, projects, technical skills) by default.
 
 CRITICAL RULES:
-1. Only reframe with keywords the master resume substantively supports (e.g., if the master shows "used Python for data analysis", surface "Python" and "data analysis" language)
-2. Do NOT add skills, technologies, or certifications not in the master resume
-3. Rephrase existing bullet points and content to include keywords - do not invent new content, metrics, or work history
+1. Reframe existing experience using JD keywords — use adjacent extrapolation to connect the candidate's work ecosystem to JD terminology
+2. Add JD keywords to the skills section when the candidate's experience is adjacent to that domain
+3. Rephrase bullet points to include keywords. You may add new phrasing that surfaces the broader ecosystem of what the candidate did.
 4. Maintain the exact same JSON structure
-5. Do not use em-dashes (—) or their variants (---, --)
+5. Do not use em-dashes or their variants
 6. Make keyword incorporation the DEFAULT across all content sections, not an optional enhancement
 7. Preserve descriptionStyles arrays and keep them aligned one-to-one with description arrays
 
-Keywords to inject (only if supported by master resume):
+Keywords to inject:
 {keywords_to_inject}
 
 Current tailored resume:
@@ -171,14 +171,13 @@ REMOVE or REPLACE:
 - Generic filler: "in order to" -> "to"
 
 VERIFY:
-- All skills exist in the master resume
-- All certifications exist in the master resume
-- No fabricated metrics or achievements
+- Skills section is packed with JD-relevant terms
+- Bullets are keyword-rich and concise
 
 Resume to polish:
 {resume}
 
-Master resume (verify all claims against this):
+Master resume (reference for the candidate's experience):
 {master_resume}
 
 Output the polished resume JSON. Return ONLY valid JSON."""

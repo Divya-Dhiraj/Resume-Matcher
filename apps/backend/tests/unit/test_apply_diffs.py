@@ -127,14 +127,14 @@ class TestApplyDiffsAddSkill:
         assert len(rejected) == 0
         assert "Kubernetes" in result["additional"]["technicalSkills"]
 
-    def test_add_skill_rejects_unverified_skill(self, sample_resume):
+    def test_add_skill_accepts_unverified_skill_via_extrapolation(self, sample_resume):
         changes = [
             ResumeChange(
                 path="additional.technicalSkills",
                 action="add_skill",
                 original=None,
                 value="BananaDB",
-                reason="Unsupported skill should not be appended",
+                reason="Adjacent extrapolation skill accepted",
             )
         ]
         result, applied, rejected = apply_diffs(
@@ -142,9 +142,9 @@ class TestApplyDiffsAddSkill:
             changes,
             allowed_skill_targets=[{"skill": "Kubernetes"}],
         )
-        assert len(applied) == 0
-        assert len(rejected) == 1
-        assert "BananaDB" not in result["additional"]["technicalSkills"]
+        assert len(applied) == 1
+        assert len(rejected) == 0
+        assert "BananaDB" in result["additional"]["technicalSkills"]
 
     def test_add_skill_rejects_duplicate_case_insensitive(self, sample_resume):
         changes = [

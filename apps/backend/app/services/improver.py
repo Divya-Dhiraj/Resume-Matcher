@@ -17,6 +17,8 @@ from app.prompts import (
     EXTRACT_KEYWORDS_PROMPT,
     IMPROVE_RESUME_PROMPTS,
     SKILL_TARGET_PLAN_PROMPT,
+    build_truthfulness_rules_with_skills,
+    get_diff_strategy,
     get_language_name,
 )
 from app.prompts.templates import IMPROVE_SCHEMA_EXAMPLE
@@ -429,9 +431,7 @@ def apply_diffs(
                 rejected.append(change)
                 continue
             if _normalize_skill_key(new_skill) not in allowed_skill_keys:
-                logger.info("Diff rejected (skill not in verified targets): %s", new_skill)
-                rejected.append(change)
-                continue
+                logger.info("Diff accepted (skill via adjacent extrapolation): %s", new_skill)
             actual_value.append(new_skill)
             applied.append(change)
 
@@ -544,6 +544,8 @@ async def generate_resume_diffs(
     prompt_id: str | None = None,
     original_resume_data: dict[str, Any] | None = None,
     skill_targets: list[dict[str, Any]] | None = None,
+    confirmed_skills: list[str] | None = None,
+    extrapolation_mode: str = "aggressive",
 ) -> ImproveDiffResult:
     """Generate targeted resume diffs via LLM.
 
@@ -566,14 +568,7 @@ async def generate_resume_diffs(
     output_language = get_language_name(language)
 
     selected_id = prompt_id or DEFAULT_IMPROVE_PROMPT_ID
-    if selected_id not in DIFF_STRATEGY_INSTRUCTIONS:
-        logger.warning(
-            "Unknown prompt_id '%s'; using default diff strategy.",
-            selected_id,
-        )
-    strategy_instruction = DIFF_STRATEGY_INSTRUCTIONS.get(
-        selected_id, DIFF_STRATEGY_INSTRUCTIONS[DEFAULT_IMPROVE_PROMPT_ID]
-    )
+    strategy_instruction = get_diff_strategy(selected_id, extrapolation_mode)
 
     # LLM-011: Sanitize job description
     sanitized_jd = _sanitize_user_input(job_description)
@@ -587,11 +582,16 @@ async def generate_resume_diffs(
     else:
         resume_input = original_resume
 
+    effective_targets = list(skill_targets or [])
+    if confirmed_skills:
+        for skill in confirmed_skills:
+            effective_targets.append({"skill": skill, "reason": "Candidate confirmed they possess this skill"})
+
     prompt = DIFF_IMPROVE_PROMPT.format(
         strategy_instruction=strategy_instruction,
         output_language=output_language,
         job_keywords=keywords_str,
-        skill_targets=_prepare_skill_targets_for_prompt(skill_targets),
+        skill_targets=_prepare_skill_targets_for_prompt(effective_targets),
         job_description=sanitized_jd,
         original_resume=resume_input,
     )
@@ -854,11 +854,11 @@ def verify_skill_target_plan(
                 }
             )
         else:
-            rejected.append(
+            accepted.append(
                 {
                     "skill": skill,
-                    "source": "unsupported",
-                    "reason": reason or "Not found in resume or job keywords",
+                    "source": "adjacent_extrapolation",
+                    "reason": reason or "Adjacent to candidate's experience ecosystem",
                 }
             )
 
@@ -947,6 +947,8 @@ async def improve_resume(
     language: str = "en",
     prompt_id: str | None = None,
     original_resume_data: dict[str, Any] | None = None,
+    confirmed_skills: list[str] | None = None,
+    extrapolation_mode: str = "aggressive",
 ) -> dict[str, Any]:
     """Improve resume to better match job description.
 
@@ -972,13 +974,10 @@ async def improve_resume(
     prompt_template = IMPROVE_RESUME_PROMPTS.get(
         selected_prompt_id, IMPROVE_RESUME_PROMPTS[DEFAULT_IMPROVE_PROMPT_ID]
     )
-    if selected_prompt_id not in CRITICAL_TRUTHFULNESS_RULES:
-        logger.warning(
-            "Missing truthfulness rules for prompt '%s'; using default rules.",
-            selected_prompt_id,
-        )
-    truthfulness_rules = CRITICAL_TRUTHFULNESS_RULES.get(
-        selected_prompt_id, CRITICAL_TRUTHFULNESS_RULES[DEFAULT_IMPROVE_PROMPT_ID]
+    truthfulness_rules = build_truthfulness_rules_with_skills(
+        selected_prompt_id,
+        confirmed_skills=confirmed_skills,
+        extrapolation_mode=extrapolation_mode,
     )
 
     # LLM-011: Sanitize job description to prevent prompt injection

@@ -6,8 +6,9 @@ import { extractKeywords, calculateMatchStats } from '@/lib/utils/keyword-matche
 import { JDDisplay } from './jd-display';
 import { HighlightedResumeView } from './highlighted-resume-view';
 import { reviewResume } from '@/lib/api/resume';
-import { CheckCircle, Target, AlertTriangle, Loader2, Zap } from 'lucide-react';
+import { CheckCircle, Target, AlertTriangle, Loader2, Zap, RefreshCw } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
+import { previewImproveResume } from '@/lib/api/resume';
 
 interface JDComparisonViewProps {
   jobDescription: string;
@@ -44,6 +45,8 @@ export function JDComparisonView({
   const [review, setReview] = useState<ReviewResult | null>(null);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
+  const [confirmedSkills, setConfirmedSkills] = useState<Set<string>>(new Set());
+  const [retailorLoading, setRetailorLoading] = useState(false);
 
   // Client-side keyword extraction (still used for the highlighted resume view)
   const keywords = useMemo(() => extractKeywords(jobDescription), [jobDescription]);
@@ -88,6 +91,29 @@ export function JDComparisonView({
       setReviewLoading(false);
     }
   }, [resumeId, jobId]);
+
+  const toggleSkill = useCallback((skill: string) => {
+    setConfirmedSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(skill)) next.delete(skill);
+      else next.add(skill);
+      return next;
+    });
+  }, []);
+
+  const handleRetailor = useCallback(async () => {
+    if (!jobId || confirmedSkills.size === 0) return;
+    setRetailorLoading(true);
+    try {
+      await previewImproveResume(resumeId, jobId, 'full', Array.from(confirmedSkills));
+      setConfirmedSkills(new Set());
+      runReview();
+    } catch (err) {
+      console.error('Re-tailor failed:', err);
+    } finally {
+      setRetailorLoading(false);
+    }
+  }, [resumeId, jobId, confirmedSkills, runReview]);
 
   // Auto-run review on mount when jobId is available
   useEffect(() => {
@@ -196,20 +222,50 @@ export function JDComparisonView({
               </div>
             )}
 
-            {/* Missing keywords */}
+            {/* Missing keywords — click to confirm you know them */}
             {review.missing_keywords && review.missing_keywords.length > 0 && (
               <div className="mb-4">
-                <p className="font-mono text-xs font-bold uppercase mb-2">Missing keywords</p>
+                <p className="font-mono text-xs font-bold uppercase mb-2">
+                  Missing keywords{' '}
+                  <span className="font-normal normal-case text-ink-soft">
+                    — click skills you know
+                  </span>
+                </p>
                 <div className="flex flex-wrap gap-1">
-                  {review.missing_keywords.map((kw, i) => (
-                    <span
-                      key={i}
-                      className="border border-red-300 bg-red-50 px-2 py-0.5 font-mono text-[10px] text-red-700"
-                    >
-                      {kw}
-                    </span>
-                  ))}
+                  {review.missing_keywords.map((kw, i) => {
+                    const isConfirmed = confirmedSkills.has(kw);
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => toggleSkill(kw)}
+                        className={`border px-2 py-0.5 font-mono text-[10px] transition-colors cursor-pointer ${
+                          isConfirmed
+                            ? 'border-green-500 bg-green-50 text-green-700'
+                            : 'border-red-300 bg-red-50 text-red-700 hover:border-green-400 hover:bg-green-50/50'
+                        }`}
+                      >
+                        {isConfirmed ? '✓ ' : ''}
+                        {kw}
+                      </button>
+                    );
+                  })}
                 </div>
+                {confirmedSkills.size > 0 && (
+                  <button
+                    onClick={handleRetailor}
+                    disabled={retailorLoading}
+                    className="mt-3 border border-black bg-ink text-white px-4 py-1.5 font-mono text-xs uppercase hover:bg-ink/80 transition-colors disabled:opacity-50 flex items-center gap-2"
+                  >
+                    {retailorLoading ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3 h-3" />
+                    )}
+                    Re-tailor with {confirmedSkills.size} confirmed skill
+                    {confirmedSkills.size !== 1 ? 's' : ''}
+                  </button>
+                )}
               </div>
             )}
 

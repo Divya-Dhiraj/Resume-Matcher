@@ -173,12 +173,16 @@ export async function improveResume(
 export async function previewImproveResume(
   resumeId: string,
   jobId: string,
-  promptId?: string
+  promptId?: string,
+  confirmedSkills?: string[],
+  extrapolationMode?: 'aggressive' | 'conservative'
 ): Promise<ImprovedResult> {
   return postImprove('/resumes/improve/preview', {
     resume_id: resumeId,
     job_id: jobId,
     prompt_id: promptId ?? null,
+    ...(confirmedSkills && confirmedSkills.length > 0 ? { confirmed_skills: confirmedSkills } : {}),
+    ...(extrapolationMode ? { extrapolation_mode: extrapolationMode } : {}),
   });
 }
 

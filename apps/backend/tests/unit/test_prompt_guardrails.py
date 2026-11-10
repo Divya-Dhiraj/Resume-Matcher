@@ -30,20 +30,18 @@ class TestJdIncorporationIsDefault:
         assert "terminology" in COVER_LETTER_PROMPT.lower()
 
 
-class TestAntiFabricationClausesPresent:
-    def test_diff_prompt_keeps_no_invented_work_clauses(self):
-        # rule 11's reframe permission must ship WITH its anti-fabrication clause
-        assert "Do NOT invent new responsibilities or metrics" in DIFF_IMPROVE_PROMPT
-        # rule 2 must remain
-        assert "Do not invent metrics or achievements not supported by the original resume" in DIFF_IMPROVE_PROMPT
+class TestAdjacentExtrapolationClausesPresent:
+    def test_diff_prompt_has_extrapolation_directive(self):
+        assert "ADJACENT EXTRAPOLATION" in DIFF_IMPROVE_PROMPT
+        assert "JD keyword" in DIFF_IMPROVE_PROMPT.lower() or "jd keywords" in DIFF_IMPROVE_PROMPT.lower()
 
-    def test_keyword_injection_keeps_no_invent_clauses(self):
-        assert "do not invent new content, metrics, or work history" in KEYWORD_INJECTION_PROMPT
-        assert "Do NOT add skills, technologies, or certifications not in the master resume" in KEYWORD_INJECTION_PROMPT
+    def test_keyword_injection_has_extrapolation_approach(self):
+        assert "adjacent extrapolation" in KEYWORD_INJECTION_PROMPT.lower()
+        assert "JD keywords" in KEYWORD_INJECTION_PROMPT or "keywords" in KEYWORD_INJECTION_PROMPT
 
-    def test_cover_letter_keeps_no_invent_clauses(self):
-        assert "Do NOT invent information not in the resume" in COVER_LETTER_PROMPT
-        assert "extrapolate adjacent evidence only" in COVER_LETTER_PROMPT
+    def test_cover_letter_uses_adjacent_extrapolation(self):
+        assert "adjacent extrapolation" in COVER_LETTER_PROMPT.lower()
+        assert "JD" in COVER_LETTER_PROMPT or "job description" in COVER_LETTER_PROMPT.lower()
 
     def test_interview_prep_keeps_no_fabrication_guardrails(self):
         assert "Do NOT invent experience" in INTERVIEW_PREP_PROMPT

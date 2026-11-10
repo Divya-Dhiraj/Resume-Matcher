@@ -31,6 +31,9 @@ export default function TailorPage() {
   const [masterResumeId, setMasterResumeId] = useState<string | null>(null);
   const [promptOptions, setPromptOptions] = useState<PromptOption[]>([]);
   const [selectedPromptId, setSelectedPromptId] = useState('keywords');
+  const [extrapolationMode, setExtrapolationMode] = useState<'aggressive' | 'conservative'>(
+    'aggressive'
+  );
   const [promptLoading, setPromptLoading] = useState(false);
   const hasUserSelectedPrompt = useRef(false);
   const missingDiffConfirmInFlight = useRef(false);
@@ -180,7 +183,13 @@ export default function TailorPage() {
       incrementJobs(); // Update cached counter
 
       // 2. Preview Resume
-      const result = await previewImproveResume(resumeId, jobId, selectedPromptId);
+      const result = await previewImproveResume(
+        resumeId,
+        jobId,
+        selectedPromptId,
+        undefined,
+        extrapolationMode
+      );
 
       if (!result?.data?.diff_summary || !result?.data?.detailed_changes) {
         console.warn('Diff data missing for tailor preview; requesting user confirmation.');
@@ -389,6 +398,42 @@ export default function TailorPage() {
             description={t('tailor.promptDescription')}
             disabled={isLoading || promptLoading}
           />
+
+          {/* Extrapolation mode toggle */}
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-xs uppercase text-ink-soft">Extrapolation:</span>
+            <div className="flex border border-black">
+              <button
+                type="button"
+                onClick={() => setExtrapolationMode('conservative')}
+                className={`px-3 py-1 font-mono text-xs uppercase transition-colors ${
+                  extrapolationMode === 'conservative'
+                    ? 'bg-ink text-white'
+                    : 'bg-white text-ink hover:bg-paper-tint'
+                }`}
+                disabled={isLoading}
+              >
+                Conservative
+              </button>
+              <button
+                type="button"
+                onClick={() => setExtrapolationMode('aggressive')}
+                className={`px-3 py-1 font-mono text-xs uppercase border-l border-black transition-colors ${
+                  extrapolationMode === 'aggressive'
+                    ? 'bg-ink text-white'
+                    : 'bg-white text-ink hover:bg-paper-tint'
+                }`}
+                disabled={isLoading}
+              >
+                Aggressive
+              </button>
+            </div>
+            <span className="font-mono text-[10px] text-ink-soft">
+              {extrapolationMode === 'aggressive'
+                ? 'Maximum JD keyword coverage via adjacent extrapolation'
+                : 'Only rephrase what is clearly supported by the resume'}
+            </span>
+          </div>
 
           <div className="relative">
             <Textarea

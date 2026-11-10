@@ -13,6 +13,8 @@ from app.prompts.templates import (
     INTERVIEW_PREP_PROMPT,
     PARSE_RESUME_PROMPT,
     SKILL_TARGET_PLAN_PROMPT,
+    build_truthfulness_rules_with_skills,
+    get_diff_strategy,
     get_language_name,
 )
 

@@ -582,6 +582,8 @@ class ImproveResumeRequest(BaseModel):
     resume_id: str
     job_id: str
     prompt_id: str | None = None
+    confirmed_skills: list[str] | None = None
+    extrapolation_mode: str | None = None
 
 
 class ImprovementSuggestion(BaseModel):

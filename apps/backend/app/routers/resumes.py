@@ -896,6 +896,7 @@ async def _improve_preview_flow(
                 e,
             )
     original_resume_data = _get_original_resume_data(resume)
+    ext_mode = request.extrapolation_mode or "aggressive"
     # Collect warnings throughout the process
     response_warnings: list[str] = []
 
@@ -939,6 +940,8 @@ async def _improve_preview_flow(
             prompt_id=prompt_id,
             original_resume_data=original_resume_data,
             skill_targets=skill_targets,
+            confirmed_skills=request.confirmed_skills,
+            extrapolation_mode=ext_mode,
         )
 
         improved_data, applied_changes, rejected_changes = apply_diffs(
@@ -975,6 +978,8 @@ async def _improve_preview_flow(
             language=language,
             prompt_id=prompt_id,
             original_resume_data=original_resume_data,
+            confirmed_skills=request.confirmed_skills,
+            extrapolation_mode=ext_mode,
         )
 
     # Safety nets (defense in depth — should rarely activate with diff-based flow)
