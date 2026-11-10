@@ -263,6 +263,48 @@ const STOP_WORDS = new Set([
   'tasks',
   'needs',
   'findings',
+  // Generic verbs that appear in JD sentences but aren't real skills
+  'give',
+  'find',
+  'ship',
+  'speed',
+  'clean',
+  'solve',
+  'figure',
+  'refine',
+  'adopt',
+  'experiment',
+  'query',
+  'querying',
+  'analyze',
+  'applied',
+  'features',
+  'large',
+  'datasets',
+  'available',
+  'applications',
+  'technologies',
+  'solutions',
+  'concepts',
+  'tools',
+  'insights',
+  'checks',
+  'partners',
+  'statements',
+  'reasoning',
+  'productivity',
+  'documentation',
+  'effectiveness',
+  'visibility',
+  'actionable',
+  'automations',
+  'manufacturing',
+  'communication',
+  'quantitative',
+  'frameworks',
+  'software',
+  'development',
+  'monitoring',
 ]);
 
 const MIN_WORD_LENGTH = 3;
@@ -494,8 +536,8 @@ const BIGRAM_SKIP_WORDS = new Set([
 
 function isTechnicalBigram(a: string, b: string): boolean {
   if (BIGRAM_SKIP_WORDS.has(a) || BIGRAM_SKIP_WORDS.has(b)) return false;
-  // At least one word should look technical: contains a digit, hyphen, or is a known tech word
-  const lookstech = (w: string) => /\d/.test(w) || w.includes('-') || w.length <= 4;
+  // At least one word must contain a digit or hyphen to look technical
+  const lookstech = (w: string) => /\d/.test(w) || w.includes('-');
   return lookstech(a) || lookstech(b);
 }
 
