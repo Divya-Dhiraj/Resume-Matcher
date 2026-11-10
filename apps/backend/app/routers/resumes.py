@@ -2093,10 +2093,12 @@ async def download_cover_letter_pdf(
     if lang:
         url = f"{url}&lang={lang}"
 
-    # Render PDF with cover letter selector
+    # Render PDF with cover letter selector and standard letter margins
+    cover_letter_margins = {"top": 20, "right": 20, "bottom": 20, "left": 20}
     try:
         pdf_bytes = await render_resume_pdf(
-            url, pageSize, selector=".cover-letter-print"
+            url, pageSize, selector=".cover-letter-print",
+            margins=cover_letter_margins,
         )
     except PDFRenderError as e:
         raise HTTPException(status_code=503, detail=str(e))

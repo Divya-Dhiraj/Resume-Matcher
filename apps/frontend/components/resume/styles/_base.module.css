@@ -275,13 +275,7 @@
 }
 
 @media print {
-  /* Ensure the main resume container respects page boundaries */
-  .resume-body {
-    page-break-inside: avoid !important;
-    break-inside: avoid-page !important;
-  }
-
-  /* Avoid breaking individual resume items across pages */
+  /* Keep each work experience / project entry together on one page */
   .resume-item {
     break-inside: avoid !important;
     page-break-inside: avoid !important;

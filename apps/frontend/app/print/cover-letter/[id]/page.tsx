@@ -77,8 +77,8 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
   // Fetch cover letter data from API (same pattern as resume)
   const { coverLetter, personalInfo } = await fetchCoverLetterData(resolvedParams.id);
 
-  // Standard cover letter margins
-  const margins = { top: 25, right: 25, bottom: 25, left: 25 };
+  // Margins are applied by Playwright's PDF renderer (not in CSS)
+  // This keeps them consistent on every page
 
   // Get today's date formatted
   const today = new Date().toLocaleDateString(locale, {
@@ -88,36 +88,32 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
   });
   const nameFallback = translate(locale, 'resume.defaults.name');
 
-  // Split cover letter into paragraphs
-  const paragraphs = coverLetter
-    .split(/\n\n+/)
-    .flatMap((p) => p.split('\n'))
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+  // Split cover letter into paragraphs — must match preview component logic
+  const paragraphs = coverLetter.split('\n\n').filter((p) => p.trim().length > 0);
 
   return (
     <div
       className="cover-letter-print bg-white"
       style={{
         width: `${pageDims.width}mm`,
-        minHeight: `${pageDims.height}mm`,
-        padding: `${margins.top}mm ${margins.right}mm ${margins.bottom}mm ${margins.left}mm`,
+        maxHeight: `${pageDims.height}mm`,
         boxSizing: 'border-box',
-        fontFamily: 'Georgia, serif',
+        fontFamily: 'Georgia, "Times New Roman", serif',
         color: '#000000',
+        overflow: 'hidden',
       }}
     >
       {/* Header - Personal Info */}
       <header
         style={{
-          marginBottom: '8mm',
-          paddingBottom: '4mm',
+          marginBottom: '6mm',
+          paddingBottom: '3mm',
           borderBottom: '2px solid #000',
         }}
       >
         <h1
           style={{
-            fontSize: '18pt',
+            fontSize: '16pt',
             fontWeight: 'bold',
             margin: 0,
             letterSpacing: '-0.02em',
@@ -127,9 +123,9 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
         </h1>
         <div
           style={{
-            marginTop: '2mm',
-            fontSize: '9pt',
-            fontFamily: 'monospace',
+            marginTop: '1.5mm',
+            fontSize: '8.5pt',
+            fontFamily: '"SF Mono", "Cascadia Code", "Fira Code", monospace',
             color: '#666',
             display: 'flex',
             flexWrap: 'wrap',
@@ -146,9 +142,9 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
       {/* Date */}
       <div
         style={{
-          marginBottom: '8mm',
-          fontSize: '10pt',
-          fontFamily: 'monospace',
+          marginBottom: '6mm',
+          fontSize: '9pt',
+          fontFamily: '"SF Mono", "Cascadia Code", "Fira Code", monospace',
           color: '#666',
         }}
       >
@@ -156,14 +152,14 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
       </div>
 
       {/* Body */}
-      <div style={{ lineHeight: '1.6' }}>
+      <div style={{ lineHeight: '1.5' }}>
         {paragraphs.length > 0 ? (
           paragraphs.map((para, idx) => (
             <p
               key={idx}
               style={{
-                fontSize: '11pt',
-                margin: '0 0 4mm 0',
+                fontSize: '10.5pt',
+                margin: '0 0 3mm 0',
                 textAlign: 'justify',
               }}
             >
@@ -171,7 +167,7 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
             </p>
           ))
         ) : (
-          <p style={{ fontSize: '11pt', color: '#999' }}>
+          <p style={{ fontSize: '10.5pt', color: '#999' }}>
             {translate(locale, 'coverLetter.print.emptyContent')}
           </p>
         )}
