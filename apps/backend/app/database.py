@@ -348,11 +348,15 @@ class Database:
             return self._resume_to_dict(row)
 
     async def delete_resume(self, resume_id: str) -> bool:
-        """Delete resume by ID."""
+        """Delete resume by ID and cascade to tracker applications."""
         async with self._session() as session:
             row = await session.get(Resume, resume_id)
             if row is None:
                 return False
+            # Remove application-tracker cards that reference this resume
+            await session.execute(
+                delete(Application).where(Application.resume_id == resume_id)
+            )
             await session.delete(row)
             await session.commit()
             return True
