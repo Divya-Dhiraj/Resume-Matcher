@@ -440,7 +440,7 @@ If the JD is in German, output a formal Anschreiben:
 8. Anlagen line
 Use formal "Sie" register. No contractions, no colloquialisms.
 
-## FOR ENGLISH JDs — standard cover letter format:
+## FOR ALL COVER LETTERS (English or other non-German JDs):
 IMPORTANT: Write in {output_language}.
 
 Job Description:
@@ -449,23 +449,41 @@ Job Description:
 Candidate Resume (JSON):
 {resume_data}
 
-Requirements:
-- 100-150 words maximum (one page hard rule)
-- 3-4 short paragraphs
-- Opening: Hook the hiring pain. Reference ONE specific thing from the JD (product, tech stack, problem). Not generic excitement.
-- Middle: Pick 1-2 qualifications from resume that DIRECTLY match stated requirements. Translate terminology using exact JD keywords. Use SID+XYZ format (Scope/Impact/Decision + Accomplished X, measured by Y, by doing Z).
-- Closing: Simple availability, no desperate enthusiasm
+## STRUCTURE (include ALL of these sections):
+1. HEADER BLOCK:
+   - Candidate full name, address, phone, email (from resume personalInfo)
+   - Blank line
+   - Date (today's date in locale-appropriate format)
+   - Blank line
+   - Recipient: Hiring Manager / HR Department name (extract from JD if available)
+   - Company name and address (extract from JD)
+   - Blank line
+   - Subject line: "Re: Application for <Role Title>" (extract role from JD)
+   - Blank line
+   - Salutation: "Dear Hiring Manager," or "Dear <Name>," if named in JD
+
+2. BODY (3-4 substantial paragraphs, 250-400 words total):
+   - Opening paragraph: Hook the hiring pain. Reference ONE specific thing from the JD (product, tech stack, business problem). Not generic excitement. State the role you are applying for.
+   - Middle paragraph(s): Pick 2-3 qualifications from resume that DIRECTLY match stated requirements. Translate terminology using exact JD keywords. Be specific — name the tools, the scale, the outcome. Each paragraph should address a different JD requirement cluster.
+   - Closing paragraph: Restate fit in one sentence, state availability, provide a simple call to action. No desperate enthusiasm.
+
+3. SIGN-OFF:
+   - "Sincerely," (or locale-appropriate equivalent)
+   - Candidate full name
+
+## RULES:
 - If resume shows career transition, frame the pivot as intentional and relevant
-- Extract company name from JD. No placeholders.
+- Extract company name and role from JD. No placeholders like [Company] or [Position].
 - Do NOT invent information not in the resume -- extrapolate adjacent evidence only
-- Tone: Confident peer, not eager applicant
+- Tone: Confident peer, not eager applicant. Professional but not stiff.
 - Do NOT use em dash anywhere in the output
-- BANNED: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, "passionate about", "excited to", "team player", "motivated self-starter", "hit the ground running"
+- BANNED: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, "passionate about", "excited to", "team player", "motivated self-starter", "hit the ground running"
 
 ## SELF-REVIEW (before outputting)
 - Does every factual claim trace back to the resume?
 - Would each claim survive one interview follow-up?
-- Is it under one page? Is it under 150 words (for English)?
+- Is it one page (250-400 words body)?
+- Does it have a proper header with To address and subject line?
 - Are there any banned words or AI tells?
 
 Output plain text only. No JSON, no markdown formatting."""
