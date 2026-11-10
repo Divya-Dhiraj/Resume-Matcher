@@ -213,6 +213,13 @@ Resume to parse:
 
 EXTRACT_KEYWORDS_PROMPT = """Extract job requirements as JSON. Output ONLY the JSON object, no other text.
 
+INPUT CLEANING — the pasted text may contain noise copied along with the job posting:
+navigation links, cookie banners, "similar jobs", "about the company" boilerplate,
+salary aggregator estimates, social-share buttons, login prompts, ads, footer links,
+or unrelated job listings. IGNORE all of that. Extract ONLY from the actual job
+posting: the role title, company name, responsibilities, requirements, qualifications,
+and nice-to-haves. If multiple job postings appear, use only the FIRST one.
+
 Example format:
 {{
   "company": "Acme Corp",
