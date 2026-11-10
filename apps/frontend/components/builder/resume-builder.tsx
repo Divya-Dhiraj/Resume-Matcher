@@ -274,6 +274,7 @@ const ResumeBuilderContent = () => {
 
   // JD comparison state
   const [jobDescription, setJobDescription] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
   const [jobContextStatus, setJobContextStatus] = useState<JobContextStatus>('idle');
 
   // AI Regenerate wizard
@@ -529,11 +530,13 @@ const ResumeBuilderContent = () => {
     const loadJobDescription = async () => {
       if (isTailoredResume && resumeId) {
         setJobDescription(null);
+        setJobId(null);
         setJobContextStatus('loading');
         try {
           const data = await fetchJobDescription(resumeId);
           if (!cancelled) {
             setJobDescription(data.content);
+            setJobId(data.job_id);
             setJobContextStatus('available');
           }
         } catch (err) {
@@ -541,12 +544,14 @@ const ResumeBuilderContent = () => {
           if (!cancelled) {
             console.warn('Could not fetch job description:', err);
             setJobDescription(null);
+            setJobId(null);
             setJobContextStatus('missing');
           }
         }
       } else {
         // Clear job description when switching to non-tailored resume
         setJobDescription(null);
+        setJobId(null);
         setJobContextStatus('idle');
       }
     };
@@ -1461,7 +1466,12 @@ const ResumeBuilderContent = () => {
 
               {/* JD Match Comparison */}
               {activeTab === 'jd-match' && jobDescription && (
-                <JDComparisonView jobDescription={jobDescription} resumeData={resumeData} />
+                <JDComparisonView
+                  jobDescription={jobDescription}
+                  resumeData={resumeData}
+                  resumeId={resumeId}
+                  jobId={jobId}
+                />
               )}
             </div>
           </div>
