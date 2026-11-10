@@ -54,8 +54,15 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
 
   const coverLetter = await fetchCoverLetter(resolvedParams.id);
 
-  // Split cover letter into paragraphs — must match preview component logic
   const paragraphs = coverLetter.split('\n\n').filter((p) => p.trim().length > 0);
+
+  // Find the salutation line ("Dear …," / "Sehr geehrte …,") to split
+  // header block (left-aligned, preserved line breaks) from body (justified).
+  const salutationIdx = paragraphs.findIndex((p) =>
+    /^(Dear |Sehr geehrte|To Whom|Estimad[oa])/i.test(p.trim())
+  );
+  const headerParagraphs = salutationIdx > 0 ? paragraphs.slice(0, salutationIdx) : [];
+  const bodyParagraphs = salutationIdx > 0 ? paragraphs.slice(salutationIdx) : paragraphs;
 
   return (
     <div
@@ -65,16 +72,29 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
         boxSizing: 'border-box',
         fontFamily: 'Georgia, "Times New Roman", serif',
         color: '#000000',
+        lineHeight: '1.5',
       }}
     >
-      {/* Body — the LLM-generated text includes its own header block
-         (sender info, date, recipient, subject line, salutation) so we
-         render the raw paragraphs directly without a template header. */}
-      <div style={{ lineHeight: '1.5' }}>
-        {paragraphs.length > 0 ? (
-          paragraphs.map((para, idx) => (
+      {paragraphs.length > 0 ? (
+        <>
+          {/* Header block: sender, date, recipient, subject — left-aligned */}
+          {headerParagraphs.map((para, idx) => (
             <p
-              key={idx}
+              key={`h-${idx}`}
+              style={{
+                fontSize: '10pt',
+                margin: '0 0 3mm 0',
+                textAlign: 'left',
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {para}
+            </p>
+          ))}
+          {/* Body: salutation + paragraphs + sign-off — justified */}
+          {bodyParagraphs.map((para, idx) => (
+            <p
+              key={`b-${idx}`}
               style={{
                 fontSize: '10.5pt',
                 margin: '0 0 3mm 0',
@@ -83,13 +103,13 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
             >
               {para}
             </p>
-          ))
-        ) : (
-          <p style={{ fontSize: '10.5pt', color: '#999' }}>
-            {translate(locale, 'coverLetter.print.emptyContent')}
-          </p>
-        )}
-      </div>
+          ))}
+        </>
+      ) : (
+        <p style={{ fontSize: '10.5pt', color: '#999' }}>
+          {translate(locale, 'coverLetter.print.emptyContent')}
+        </p>
+      )}
     </div>
   );
 }

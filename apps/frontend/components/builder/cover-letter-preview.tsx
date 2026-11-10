@@ -34,9 +34,14 @@ export function CoverLetterPreview({
 }: CoverLetterPreviewProps) {
   const { t } = useTranslations();
 
-  // Parse content into paragraphs — the LLM-generated text includes its own
-  // header block (sender info, date, recipient, subject, salutation).
   const paragraphs = content.split('\n\n').filter((p) => p.trim().length > 0);
+
+  // Split header (sender, date, recipient, subject) from body at salutation
+  const salutationIdx = paragraphs.findIndex((p) =>
+    /^(Dear |Sehr geehrte|To Whom|Estimad[oa])/i.test(p.trim())
+  );
+  const headerParagraphs = salutationIdx > 0 ? paragraphs.slice(0, salutationIdx) : [];
+  const bodyParagraphs = salutationIdx > 0 ? paragraphs.slice(salutationIdx) : paragraphs;
 
   return (
     <div
@@ -53,20 +58,31 @@ export function CoverLetterPreview({
           maxWidth: pageSize === 'A4' ? '210mm' : '8.5in',
         }}
       >
-        <div className="space-y-4">
-          {paragraphs.length > 0 ? (
-            paragraphs.map((para, idx) => (
-              <p key={idx} className="font-serif text-base leading-relaxed text-ink-soft">
+        {paragraphs.length > 0 ? (
+          <div className="space-y-4">
+            {headerParagraphs.map((para, idx) => (
+              <p
+                key={`h-${idx}`}
+                className="font-serif text-sm leading-relaxed text-ink-soft whitespace-pre-line"
+              >
                 {para}
               </p>
-            ))
-          ) : (
-            <div className="text-center py-12 text-steel-grey">
-              <p className="font-mono text-sm">{t('coverLetter.preview.emptyTitle')}</p>
-              <p className="font-mono text-xs mt-2">{t('coverLetter.preview.emptyDescription')}</p>
-            </div>
-          )}
-        </div>
+            ))}
+            {bodyParagraphs.map((para, idx) => (
+              <p
+                key={`b-${idx}`}
+                className="font-serif text-base leading-relaxed text-ink-soft text-justify"
+              >
+                {para}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-12 text-steel-grey">
+            <p className="font-mono text-sm">{t('coverLetter.preview.emptyTitle')}</p>
+            <p className="font-mono text-xs mt-2">{t('coverLetter.preview.emptyDescription')}</p>
+          </div>
+        )}
       </div>
     </div>
   );
