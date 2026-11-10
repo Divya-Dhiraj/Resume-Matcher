@@ -195,25 +195,27 @@ const ResumeBuilderContent = () => {
   const [showLeaveWithLocalDraftDialog, setShowLeaveWithLocalDraftDialog] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [loadingState, setLoadingState] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
-  const [templateSettings, setTemplateSettings] = useState<TemplateSettings>(() => {
-    if (typeof window === 'undefined') return DEFAULT_TEMPLATE_SETTINGS;
+  const [templateSettings, setTemplateSettings] =
+    useState<TemplateSettings>(DEFAULT_TEMPLATE_SETTINGS);
+  const [settingsHydrated, setSettingsHydrated] = useState(false);
+  useEffect(() => {
     try {
       const saved = safeStorage.get(SETTINGS_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        return {
+        setTemplateSettings({
           ...DEFAULT_TEMPLATE_SETTINGS,
           ...parsed,
           margins: { ...DEFAULT_TEMPLATE_SETTINGS.margins, ...parsed.margins },
           spacing: { ...DEFAULT_TEMPLATE_SETTINGS.spacing, ...parsed.spacing },
           fontSize: { ...DEFAULT_TEMPLATE_SETTINGS.fontSize, ...parsed.fontSize },
-        };
+        });
       }
     } catch {
-      // fall through to defaults
+      // use defaults
     }
-    return DEFAULT_TEMPLATE_SETTINGS;
-  });
+    setSettingsHydrated(true);
+  }, []);
   const { improvedData } = useResumePreview();
   const improvedPreview = improvedData?.data?.resume_preview;
   const improvedCoverLetter = improvedData?.data?.cover_letter;
