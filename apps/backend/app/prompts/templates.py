@@ -639,7 +639,10 @@ Format: keyword-rich, value-oriented bullets. Lead with a strong action verb + J
   TECHNICAL LENS: Does this number demonstrate a competency the JD asks for? A query optimization time ("reduced p95 latency from 800ms to 120ms") matters for a data engineering role; a generic "improved efficiency by 30%" does not because it says nothing about HOW.
   MANAGEMENT LENS: Does this number signal scope, ownership, or business impact that matches the seniority bar of THIS role? "Managed $4M annual cloud budget" signals senior ownership — keep it for a senior role, drop it for an intern/junior posting where it reads as inflated. "Team of 12" matters for a lead role, is noise for an IC role.
   KEEP the metric if it passes EITHER lens for THIS specific JD. DROP it if it fails both — replace with a tighter keyword-rich phrase that shows what was done. A bullet with the right JD keywords and no metric is stronger than one padded with an irrelevant number.
-- BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic. Rewrite any bullet containing these.
+- ACTION VERB RULES:
+  1. Use simple, strong, widely understood verbs — the kind every hiring manager reads without pausing: built, designed, wrote, ran, shipped, set up, created, automated, analyzed, configured, deployed, tested, integrated, migrated, refactored, optimized, tracked, documented, resolved, implemented, developed, maintained, defined, delivered, mapped, modeled, trained, parsed, cleaned, validated, generated, connected, extended, reduced, streamlined, consolidated, standardized, published, scheduled, processed, extracted, transformed, loaded.
+  2. NEVER repeat the same leading verb within one role's bullets. Scan your output: if two bullets under the same job start with the same verb, rewrite one. Across different roles, occasional repeats are acceptable.
+  3. BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, endeavored, proactively, holistic, robust, cutting-edge, state-of-the-art. Rewrite any bullet containing these.
 - No "transferable to" or "directly applicable to" hedging language. Either the candidate did it or they did not.
 
 ## BULLET CONTROL (count, length & relevance)
