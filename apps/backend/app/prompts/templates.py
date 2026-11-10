@@ -308,6 +308,8 @@ Rules:
 - Copy the "years" field values EXACTLY as they appear in the original resume (including any month prefixes like "Jan 2020 - Present"). Do not shorten, reformat, or drop months.
 - If the resume is non-technical, do NOT add technical jargon
 - Do NOT use em dash ("—") anywhere in the writing/output, even if it exists, remove it
+- Each bullet max 20-25 words. Cut filler: no "responsible for", "tasked with", "in order to".
+- BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, endeavored, proactively, holistic, robust, cutting-edge, state-of-the-art. Rewrite any bullet containing these.
 
 Job Description:
 {job_description}
@@ -338,6 +340,9 @@ Rules:
 - Copy the "years" field values EXACTLY as they appear in the original resume (including any month prefixes like "Jan 2020 - Present"). Do not shorten, reformat, or drop months.
 - If resume is non-technical, keep language non-technical while still aligning keywords
 - Do NOT use em dash ("—") anywhere in the writing/output, even if it exists, remove it
+- Each bullet max 20-25 words. Cut filler: no "responsible for", "tasked with", "in order to".
+- Use simple, strong verbs (built, designed, wrote, ran, shipped, created, automated, deployed, tested, integrated). Never repeat the same leading verb within one role.
+- BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, endeavored, proactively, holistic, robust, cutting-edge, state-of-the-art. Rewrite any bullet containing these.
 
 Job Description:
 {job_description}
@@ -361,7 +366,7 @@ Do NOT include personalInfo in your output - it will be preserved from the origi
 Rules:
 - Make targeted adjustments to bullet points to align with job description phrasing. Preserve the candidate's original details and voice - adjust wording, do not rewrite entirely.
 - DO NOT invent new information
-- Preserve existing action verbs. Do not invent quantifiable achievements not in the original.
+- Use simple, strong action verbs (built, designed, wrote, ran, shipped, created, automated, deployed, tested, integrated). Do not invent quantifiable achievements not in the original.
 - Keep proper nouns (names, company names, locations) unchanged
 - Translate job titles, descriptions, and skills to {output_language}
 - Preserve descriptionStyles arrays and keep them aligned one-to-one with description arrays
@@ -370,6 +375,9 @@ Rules:
 - Copy the "years" field values EXACTLY as they appear in the original resume (including any month prefixes like "Jan 2020 - Present"). Do not shorten, reformat, or drop months.
 - Calculate and emphasize total relevant experience duration when it matches requirements
 - Do NOT use em dash ("—") anywhere in the writing/output, even if it exists, remove it
+- Each bullet max 20-25 words. Cut filler: no "responsible for", "tasked with", "in order to".
+- Use simple, strong verbs (built, designed, wrote, ran, shipped, created, automated, deployed, tested, integrated). Never repeat the same leading verb within one role.
+- BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, endeavored, proactively, holistic, robust, cutting-edge, state-of-the-art. Rewrite any bullet containing these.
 
 Job Description:
 {job_description}

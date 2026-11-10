@@ -98,7 +98,7 @@ CANDIDATE'S ADDITIONAL CONTEXT:
 TASK:
 Generate NEW bullet points to ADD to the existing description. The original bullets will be kept as-is.
 New bullets should be:
-1. Action-oriented: Start with strong verbs (Led, Built, Architected, Implemented, Optimized)
+1. Action-oriented: Start with strong verbs (Led, Built, Designed, Implemented, Optimized, Created, Deployed, Automated)
 2. Quantified: Include metrics, numbers, percentages where the candidate provided them
 3. Technically specific: Mention technologies, tools, and methodologies
 4. Impact-focused: Clearly state the business or technical outcome
@@ -119,9 +119,9 @@ IMPORTANT RULES:
 - Preserve factual accuracy - only use information provided by the candidate
 - Don't invent metrics or details not given by the candidate
 - If candidate's answers are brief, still add what you can
-- Keep bullets concise (1-2 lines each)
+- Each bullet max 20-25 words. Cut filler: no "responsible for", "tasked with", "in order to".
 - Use past tense for past roles, present tense for current roles
-- Avoid buzzwords and fluff - be specific and concrete
+- BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, endeavored, proactively, holistic, robust, cutting-edge, state-of-the-art.
 - Focus on information from the candidate's answers that isn't already in the original bullets"""
 
 
@@ -168,8 +168,9 @@ RULES:
 - Directly address the user's instruction
 - Do NOT add any new facts, metrics, dates, companies, titles, or accomplishments that are not already present in CURRENT DESCRIPTION or USER'S FEEDBACK/INSTRUCTION
 - If the user asks for metrics but none exist in the provided text, do not fabricate numbers; rewrite to emphasize scope/impact qualitatively instead
-- Keep bullets concise (1-2 lines each)
-- Use past tense for past roles, present tense for current"""
+- Each bullet max 20-25 words. Cut filler: no "responsible for", "tasked with", "in order to".
+- Use past tense for past roles, present tense for current
+- BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, endeavored, proactively, holistic, robust, cutting-edge, state-of-the-art."""
 
 
 REGENERATE_SKILLS_PROMPT = """You are a professional resume writer. Rewrite the technical skills section based on user feedback.
