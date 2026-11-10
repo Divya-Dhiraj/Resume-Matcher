@@ -1,8 +1,8 @@
 /**
  * Cover Letter Print Page
  *
- * This page renders a cover letter for PDF generation.
- * Uses the same API fetch pattern as the resume print page.
+ * Renders a cover letter for PDF generation following DIN 5008 formatting:
+ * sender name bold, date right-aligned, subject bold, body justified.
  */
 
 import { API_BASE } from '@/lib/api/client';
@@ -44,6 +44,28 @@ function parsePageSize(value: string | undefined): PageSize {
   return 'A4';
 }
 
+type ParaRole = 'sender' | 'date' | 'recipient' | 'subject' | 'body';
+
+function classifyParagraphs(paragraphs: string[]): Array<{ text: string; role: ParaRole }> {
+  const salutationIdx = paragraphs.findIndex((p) =>
+    /^(Dear |Sehr geehrte|To Whom|Estimad[oa])/i.test(p.trim())
+  );
+
+  if (salutationIdx <= 0) {
+    return paragraphs.map((text) => ({ text, role: 'body' as ParaRole }));
+  }
+
+  return paragraphs.map((text, idx) => {
+    if (idx >= salutationIdx) return { text, role: 'body' as ParaRole };
+    if (idx === 0) return { text, role: 'sender' as ParaRole };
+    if (/^\d{1,2}[\s./]/.test(text.trim()) || /\b\d{4}$/.test(text.trim()))
+      return { text, role: 'date' as ParaRole };
+    if (/^(Re:|Betreff:|Subject:|Ref[.:])/.test(text.trim()))
+      return { text, role: 'subject' as ParaRole };
+    return { text, role: 'recipient' as ParaRole };
+  });
+}
+
 export default async function PrintCoverLetterPage({ params, searchParams }: PageProps) {
   const resolvedParams = await params;
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
@@ -53,16 +75,8 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
   const locale = resolveLocale(resolvedSearchParams?.lang);
 
   const coverLetter = await fetchCoverLetter(resolvedParams.id);
-
   const paragraphs = coverLetter.split('\n\n').filter((p) => p.trim().length > 0);
-
-  // Find the salutation line ("Dear …," / "Sehr geehrte …,") to split
-  // header block (left-aligned, preserved line breaks) from body (justified).
-  const salutationIdx = paragraphs.findIndex((p) =>
-    /^(Dear |Sehr geehrte|To Whom|Estimad[oa])/i.test(p.trim())
-  );
-  const headerParagraphs = salutationIdx > 0 ? paragraphs.slice(0, salutationIdx) : [];
-  const bodyParagraphs = salutationIdx > 0 ? paragraphs.slice(salutationIdx) : paragraphs;
+  const classified = classifyParagraphs(paragraphs);
 
   return (
     <div
@@ -75,35 +89,86 @@ export default async function PrintCoverLetterPage({ params, searchParams }: Pag
         lineHeight: '1.5',
       }}
     >
-      {paragraphs.length > 0 ? (
+      {classified.length > 0 ? (
         <>
-          {/* Header block: sender, date, recipient, subject — left-aligned */}
-          {headerParagraphs.map((para, idx) => (
-            <p
-              key={`h-${idx}`}
-              style={{
-                fontSize: '10pt',
-                margin: '0 0 3mm 0',
-                textAlign: 'left',
-                whiteSpace: 'pre-line',
-              }}
-            >
-              {para}
-            </p>
-          ))}
-          {/* Body: salutation + paragraphs + sign-off — justified */}
-          {bodyParagraphs.map((para, idx) => (
-            <p
-              key={`b-${idx}`}
-              style={{
-                fontSize: '10.5pt',
-                margin: '0 0 3mm 0',
-                textAlign: 'justify',
-              }}
-            >
-              {para}
-            </p>
-          ))}
+          {classified.map(({ text, role }, idx) => {
+            const lines = text.split('\n');
+            switch (role) {
+              case 'sender':
+                return (
+                  <div key={idx} style={{ marginBottom: '3mm', whiteSpace: 'pre-line' }}>
+                    <p
+                      style={{
+                        fontSize: '12pt',
+                        fontWeight: 'bold',
+                        margin: 0,
+                        lineHeight: '1.3',
+                      }}
+                    >
+                      {lines[0]}
+                    </p>
+                    {lines.length > 1 && (
+                      <p style={{ fontSize: '9pt', margin: '1mm 0 0 0', lineHeight: '1.4' }}>
+                        {lines.slice(1).join('\n')}
+                      </p>
+                    )}
+                  </div>
+                );
+              case 'date':
+                return (
+                  <p
+                    key={idx}
+                    style={{
+                      fontSize: '10pt',
+                      margin: '0 0 3mm 0',
+                      textAlign: 'right',
+                    }}
+                  >
+                    {text}
+                  </p>
+                );
+              case 'recipient':
+                return (
+                  <p
+                    key={idx}
+                    style={{
+                      fontSize: '10pt',
+                      margin: '0 0 3mm 0',
+                      whiteSpace: 'pre-line',
+                      lineHeight: '1.4',
+                    }}
+                  >
+                    {text}
+                  </p>
+                );
+              case 'subject':
+                return (
+                  <p
+                    key={idx}
+                    style={{
+                      fontSize: '11pt',
+                      fontWeight: 'bold',
+                      margin: '0 0 3mm 0',
+                    }}
+                  >
+                    {text}
+                  </p>
+                );
+              default:
+                return (
+                  <p
+                    key={idx}
+                    style={{
+                      fontSize: '10.5pt',
+                      margin: '0 0 3mm 0',
+                      textAlign: 'justify',
+                    }}
+                  >
+                    {text}
+                  </p>
+                );
+            }
+          })}
         </>
       ) : (
         <p style={{ fontSize: '10.5pt', color: '#999' }}>
