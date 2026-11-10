@@ -42,6 +42,27 @@ describe('extractKeywords', () => {
   it('returns an empty set when everything is filtered', () => {
     expect(extractKeywords('5 years of experience').size).toBe(0);
   });
+
+  it('extracts known multi-word phrases', () => {
+    const kw = extractKeywords('Experience with data pipelines and Power BI dashboards');
+    expect(kw.has('data pipelines')).toBe(true);
+    expect(kw.has('power bi')).toBe(true);
+  });
+
+  it('extracts machine learning and large language models as phrases', () => {
+    const kw = extractKeywords('Apply machine learning and large language models to problems');
+    expect(kw.has('machine learning')).toBe(true);
+    expect(kw.has('large language models')).toBe(true);
+  });
+
+  it('filters extended JD boilerplate words', () => {
+    const kw = extractKeywords('build and maintain reports that give management visibility');
+    // These are all boilerplate verbs/words
+    expect(kw.has('build')).toBe(false);
+    expect(kw.has('maintain')).toBe(false);
+    expect(kw.has('reports')).toBe(true); // domain-relevant, not in stop list
+    expect(kw.has('management')).toBe(true); // domain-relevant
+  });
 });
 
 describe('segmentTextByKeywords', () => {
@@ -71,5 +92,17 @@ describe('calculateMatchStats', () => {
     const stats = calculateMatchStats('Python', new Set());
     expect(stats.matchPercentage).toBe(0);
     expect(stats.matchCount).toBe(0);
+  });
+
+  it('matches multi-word phrases in resume text', () => {
+    const stats = calculateMatchStats(
+      'Built data pipelines using Python and Power BI',
+      new Set(['data pipelines', 'power bi', 'kubernetes'])
+    );
+    expect(stats.matchCount).toBe(2);
+    expect(stats.totalKeywords).toBe(3);
+    expect(stats.matchPercentage).toBe(67);
+    expect(stats.matchedKeywords.has('data pipelines')).toBe(true);
+    expect(stats.matchedKeywords.has('power bi')).toBe(true);
   });
 });
