@@ -561,8 +561,8 @@ RESUME_SCHEMA = RESUME_SCHEMA_EXAMPLE
 
 DIFF_STRATEGY_INSTRUCTIONS = {
     "nudge": "Make minimal edits. Only rephrase where there is a clear match. Do not add or remove bullet points. Preserve bullet counts.",
-    "keywords": "Adjacent Extrapolation mode: for each JD keyword, find the candidate's closest real anchor and translate using JD terminology. Rewrite bullets using exact JD competency nouns and SID+XYZ format (Scope/Impact/Decision + Accomplished X, measured by Y, by doing Z). Remove bullets with no JD mapping. Reorder skills to prioritize JD matches. Add new bullets that elaborate on existing work by extrapolating the surrounding ecosystem. Bullet control: most recent + most relevant roles get 4-6 bullets; older/less relevant roles get 2-3 bullets; remove anything that does not map to THIS job. Target 92-98% ATS keyword match.",
-    "full": "Maximum Adjacent Extrapolation with full bullet control: rewrite every bullet to directly address JD requirements using SID+XYZ format. For each JD requirement, extrapolate the surrounding ecosystem of the candidate's real work. Bullet control: most recent + most relevant roles get 4-6 detailed bullets; older/less relevant roles get 2-3 bullets max; REMOVE any bullet with no JD mapping. Add bullets that elaborate on existing work by surfacing adjacent methodology. Reorder all lists by JD relevance. Target 95%+ ATS keyword match. The resume should read as if written specifically for this job, fitting 1-2 pages.",
+    "keywords": "Adjacent Extrapolation mode: for each JD keyword, find the candidate's closest real anchor and translate using JD terminology. Rewrite bullets using exact JD competency nouns and SID+XYZ format (Scope/Impact/Decision + Accomplished X, measured by Y, by doing Z). Remove bullets with no JD mapping. Reorder skills to prioritize JD matches. Add new bullets that elaborate on existing work by extrapolating the surrounding ecosystem. Bullet control: most recent + most relevant roles get 4-6 bullets; older/less relevant roles get 2-3 bullets; remove anything that does not map to THIS job. Each bullet max 20-25 words — lead with a strong verb, cut all filler. Target 92-98% ATS keyword match.",
+    "full": "Maximum Adjacent Extrapolation with full bullet control: rewrite every bullet to directly address JD requirements using SID+XYZ format. For each JD requirement, extrapolate the surrounding ecosystem of the candidate's real work. Bullet control: most recent + most relevant roles get 4-6 detailed bullets; older/less relevant roles get 2-3 bullets max; REMOVE any bullet with no JD mapping. Add bullets that elaborate on existing work by surfacing adjacent methodology. Reorder all lists by JD relevance. Each bullet max 20-25 words — lead with a strong verb, cut all filler. Target 95%+ ATS keyword match. The resume should read as if written specifically for this job, fitting 1-2 pages.",
 }
 
 SKILL_TARGET_PLAN_PROMPT = """Build a concise skill target plan for tailoring this resume to the job.
@@ -631,10 +631,11 @@ Format: SID + XYZ (Scope/Impact/Decision + Accomplished X, measured by Y, by doi
 - BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic. Rewrite any bullet containing these.
 - No "transferable to" or "directly applicable to" hedging language. Either the candidate did it or they did not.
 
-## BULLET CONTROL (length & relevance)
-- Most recent and most JD-relevant experience: 4-6 bullets (more detail)
+## BULLET CONTROL (count, length & relevance)
+- Most recent and most JD-relevant experience: 4-6 bullets
 - Older or less relevant experience: 2-3 bullets (only what maps to JD)
 - REMOVE bullets that do not contribute to THIS job (action: "remove")
+- BULLET LENGTH: each bullet MUST be 1 line, max 20-25 words. Cut filler ruthlessly — no "responsible for", "tasked with", "in order to". Lead with a strong verb, state the what + metric/result. If a bullet exceeds 25 words, split it or trim it.
 - Total resume should be 1-2 pages. If over 2 pages, aggressively trim older/irrelevant content
 - Every bullet must earn its place for THIS specific job
 
