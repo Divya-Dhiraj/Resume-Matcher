@@ -31,6 +31,9 @@ import {
   type FeaturePromptsUpdate,
   type ApiKeyProviderStatus,
   type ApiKeyProvider,
+  fetchSystemPrompts,
+  updateSystemPrompt,
+  type SystemPromptsMap,
 } from '@/lib/api/config';
 import { API_URL } from '@/lib/api/client';
 import { getVersionString } from '@/lib/config/version';
@@ -60,6 +63,9 @@ import {
   Globe,
   Trash2,
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  RotateCcw,
 } from 'lucide-react';
 import { useLanguage } from '@/lib/context/language-context';
 import { useTranslations } from '@/lib/i18n';
@@ -166,6 +172,12 @@ export default function SettingsPage() {
     field: string;
     missing: string[];
   } | null>(null);
+
+  // System prompts
+  const [systemPrompts, setSystemPrompts] = useState<SystemPromptsMap>({});
+  const [expandedPrompt, setExpandedPrompt] = useState<string | null>(null);
+  const [promptEdits, setPromptEdits] = useState<Record<string, string>>({});
+  const [promptSaving, setPromptSaving] = useState<string | null>(null);
 
   // Per-provider key deletion confirm target (null = dialog closed).
   const [keyToDelete, setKeyToDelete] = useState<ApiKeyProvider | null>(null);
@@ -286,13 +298,14 @@ export default function SettingsPage() {
 
     async function loadConfig() {
       try {
-        const [llmConfig, featureConfig, promptConfig, featurePrompts, keyStatus] =
+        const [llmConfig, featureConfig, promptConfig, featurePrompts, keyStatus, sysPrompts] =
           await Promise.all([
             fetchLlmConfig().catch(() => null),
             fetchFeatureConfig().catch(() => null),
             fetchPromptConfig().catch(() => null),
             fetchFeaturePrompts().catch(() => null),
             fetchApiKeyStatus().catch(() => null),
+            fetchSystemPrompts().catch(() => ({})),
           ]);
 
         if (cancelled) return;
@@ -337,6 +350,10 @@ export default function SettingsPage() {
           setOutreachPrompt(featurePrompts.outreach_message_prompt);
           setCoverLetterDefault(featurePrompts.cover_letter_default);
           setOutreachDefault(featurePrompts.outreach_message_default);
+        }
+
+        if (sysPrompts && typeof sysPrompts === 'object') {
+          setSystemPrompts(sysPrompts as SystemPromptsMap);
         }
 
         setStatus('idle');
@@ -1447,6 +1464,119 @@ export default function SettingsPage() {
               </div>
             </div>
           </section>
+
+          {/* System Prompts */}
+          {Object.keys(systemPrompts).length > 0 && (
+            <section className="space-y-6">
+              <div className="flex items-center gap-2 border-b border-black pb-2">
+                <FileText className="w-4 h-4" />
+                <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                  System Prompts
+                </h2>
+              </div>
+              <p className="font-mono text-xs text-ink-soft">
+                View and edit all backend prompts. Leave empty to use the built-in default.
+              </p>
+              <div className="space-y-2">
+                {Object.entries(systemPrompts).map(([key, entry]) => {
+                  const isExpanded = expandedPrompt === key;
+                  const editValue = promptEdits[key] ?? entry.current;
+                  const isOverridden = entry.current.length > 0;
+                  const isSaving = promptSaving === key;
+                  return (
+                    <div key={key} className="border border-black">
+                      <button
+                        type="button"
+                        onClick={() => setExpandedPrompt(isExpanded ? null : key)}
+                        className="flex w-full items-center justify-between p-3 hover:bg-paper-tint"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-bold">{entry.label}</span>
+                          {isOverridden && (
+                            <span className="bg-primary/10 text-primary px-1.5 py-0.5 font-mono text-[10px] uppercase">
+                              Customized
+                            </span>
+                          )}
+                        </div>
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4" />
+                        )}
+                      </button>
+                      {isExpanded && (
+                        <div className="border-t border-black p-3 space-y-3">
+                          <p className="font-mono text-[10px] text-ink-soft">{entry.description}</p>
+                          <textarea
+                            value={editValue || ''}
+                            onChange={(e) =>
+                              setPromptEdits((prev) => ({ ...prev, [key]: e.target.value }))
+                            }
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') e.stopPropagation();
+                            }}
+                            placeholder={entry.default}
+                            rows={12}
+                            className="w-full border border-black bg-white p-3 font-mono text-xs leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              onClick={async () => {
+                                setPromptSaving(key);
+                                try {
+                                  const updated = await updateSystemPrompt(key, editValue || '');
+                                  setSystemPrompts(updated);
+                                  setPromptEdits((prev) => {
+                                    const next = { ...prev };
+                                    delete next[key];
+                                    return next;
+                                  });
+                                } catch {
+                                  // Error handling — keep edit state
+                                } finally {
+                                  setPromptSaving(null);
+                                }
+                              }}
+                              disabled={isSaving}
+                              className="text-xs"
+                            >
+                              {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save'}
+                            </Button>
+                            {isOverridden && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setPromptSaving(key);
+                                  try {
+                                    const updated = await updateSystemPrompt(key, '');
+                                    setSystemPrompts(updated);
+                                    setPromptEdits((prev) => {
+                                      const next = { ...prev };
+                                      delete next[key];
+                                      return next;
+                                    });
+                                  } catch {
+                                    // keep going
+                                  } finally {
+                                    setPromptSaving(null);
+                                  }
+                                }}
+                                disabled={isSaving}
+                                className="flex items-center gap-1 font-mono text-xs text-ink-soft hover:text-ink"
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                                Reset to default
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
 
           {/* Danger Zone */}
           <section className="space-y-6">

@@ -856,9 +856,11 @@ async def _inline_review(
     """Run the hiring-panel review on in-memory resume data (no DB lookup)."""
     from app.llm import complete_json
     from app.prompts.templates import RESUME_REVIEW_PROMPT
+    from app.config_cache import get_system_prompt_override
 
     resume_str = json.dumps(improved_data)
-    prompt = RESUME_REVIEW_PROMPT.format(
+    review_tpl = get_system_prompt_override("resume_review") or RESUME_REVIEW_PROMPT
+    prompt = review_tpl.format(
         job_description=job_content,
         resume_data=resume_str,
     )

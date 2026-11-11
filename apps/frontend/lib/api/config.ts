@@ -540,6 +540,35 @@ export async function clearAllApiKeys(): Promise<void> {
   }
 }
 
+// System prompts
+export interface SystemPromptEntry {
+  label: string;
+  description: string;
+  default: string;
+  current: string;
+}
+
+export type SystemPromptsMap = Record<string, SystemPromptEntry>;
+
+export async function fetchSystemPrompts(): Promise<SystemPromptsMap> {
+  const res = await apiFetch('/config/system-prompts', { credentials: 'include' });
+  if (!res.ok) throw new Error('Failed to fetch system prompts');
+  const data = await res.json();
+  return data.prompts;
+}
+
+export async function updateSystemPrompt(key: string, value: string): Promise<SystemPromptsMap> {
+  const res = await apiFetch('/config/system-prompts', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ overrides: { [key]: value } }),
+  });
+  if (!res.ok) throw new Error('Failed to update system prompt');
+  const data = await res.json();
+  return data.prompts;
+}
+
 // Reset database
 export async function resetDatabase(): Promise<void> {
   const res = await apiFetch('/config/reset', {

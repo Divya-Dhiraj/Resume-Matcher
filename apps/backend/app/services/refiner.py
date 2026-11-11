@@ -549,7 +549,10 @@ async def inject_keywords(
             len(job_description),
         )
 
-    prompt = KEYWORD_INJECTION_PROMPT.format(
+    from app.config_cache import get_system_prompt_override
+
+    ki_prompt = get_system_prompt_override("keyword_injection") or KEYWORD_INJECTION_PROMPT
+    prompt = ki_prompt.format(
         keywords_to_inject=json.dumps(keywords_to_inject),
         current_resume=json.dumps(tailored),
         master_resume=json.dumps(master),

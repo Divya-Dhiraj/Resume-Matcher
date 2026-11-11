@@ -587,7 +587,10 @@ async def generate_resume_diffs(
         for skill in confirmed_skills:
             effective_targets.append({"skill": skill, "reason": "Candidate confirmed they possess this skill"})
 
-    prompt = DIFF_IMPROVE_PROMPT.format(
+    from app.config_cache import get_system_prompt_override
+
+    diff_prompt = get_system_prompt_override("diff_improve") or DIFF_IMPROVE_PROMPT
+    prompt = diff_prompt.format(
         strategy_instruction=strategy_instruction,
         output_language=output_language,
         job_keywords=keywords_str,
@@ -644,8 +647,11 @@ async def extract_job_keywords(job_description: str) -> dict[str, Any]:
         Structured keywords and requirements
     """
     # LLM-011: Sanitize job description before using in prompt
+    from app.config_cache import get_system_prompt_override
+
     sanitized_jd = _sanitize_user_input(job_description)
-    prompt = EXTRACT_KEYWORDS_PROMPT.format(job_description=sanitized_jd)
+    kw_prompt = get_system_prompt_override("extract_keywords") or EXTRACT_KEYWORDS_PROMPT
+    prompt = kw_prompt.format(job_description=sanitized_jd)
 
     return await complete_json(
         prompt=prompt,

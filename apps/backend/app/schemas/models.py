@@ -859,6 +859,18 @@ class FeaturePromptsResponse(BaseModel):
     outreach_message_default: str
 
 
+class SystemPromptsResponse(BaseModel):
+    """All system prompts: current value (override or default) + built-in default."""
+
+    prompts: dict[str, dict[str, str]]
+
+
+class SystemPromptsUpdateRequest(BaseModel):
+    """Update one or more system prompt overrides. Empty string = reset to default."""
+
+    overrides: dict[str, str]
+
+
 # API Key Management Models
 class ApiKeyProviderStatus(BaseModel):
     """Status of a single API key provider."""

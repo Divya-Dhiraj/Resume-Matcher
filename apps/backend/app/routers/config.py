@@ -31,7 +31,17 @@ from app.prompts import (
     IMPROVE_PROMPT_OPTIONS,
     validate_prompt_placeholders,
 )
-from app.prompts.templates import COVER_LETTER_PROMPT, OUTREACH_MESSAGE_PROMPT
+from app.prompts.templates import (
+    COVER_LETTER_PROMPT,
+    OUTREACH_MESSAGE_PROMPT,
+    DIFF_IMPROVE_PROMPT,
+    EXTRACT_KEYWORDS_PROMPT,
+    PARSE_RESUME_PROMPT,
+    SKILL_TARGET_PLAN_PROMPT,
+    RESUME_REVIEW_PROMPT,
+)
+from app.prompts.refinement import KEYWORD_INJECTION_PROMPT, VALIDATION_POLISH_PROMPT
+from app.schemas.models import SystemPromptsResponse, SystemPromptsUpdateRequest
 from app.config import (
     get_api_keys_from_config,
     save_api_keys_to_config,
@@ -681,3 +691,101 @@ async def reset_database_endpoint(request: ResetDatabaseRequest) -> dict:
         )
     await db.reset_database()
     return {"message": "Database and all data have been reset successfully"}
+
+
+# ── System prompts (view / edit all backend prompts) ────────────────────
+
+SYSTEM_PROMPT_REGISTRY: dict[str, dict[str, str]] = {
+    "diff_improve": {
+        "label": "Resume Tailor (Diff Mode)",
+        "description": "Main prompt for tailoring resumes using diff-based changes",
+        "default": DIFF_IMPROVE_PROMPT,
+    },
+    "extract_keywords": {
+        "label": "Keyword Extraction",
+        "description": "Extracts job requirements and keywords from a job description",
+        "default": EXTRACT_KEYWORDS_PROMPT,
+    },
+    "parse_resume": {
+        "label": "Resume Parser",
+        "description": "Parses uploaded resumes into structured JSON",
+        "default": PARSE_RESUME_PROMPT,
+    },
+    "skill_target_plan": {
+        "label": "Skill Target Plan",
+        "description": "Plans which skills to target when tailoring a resume",
+        "default": SKILL_TARGET_PLAN_PROMPT,
+    },
+    "cover_letter": {
+        "label": "Cover Letter",
+        "description": "Generates a cover letter from resume and job description",
+        "default": COVER_LETTER_PROMPT,
+    },
+    "outreach_message": {
+        "label": "Cold Outreach Message",
+        "description": "Generates a LinkedIn/email outreach message",
+        "default": OUTREACH_MESSAGE_PROMPT,
+    },
+    "resume_review": {
+        "label": "JD Match / Hiring Panel Review",
+        "description": "Scores a resume against a job description from multiple reviewer perspectives",
+        "default": RESUME_REVIEW_PROMPT,
+    },
+    "keyword_injection": {
+        "label": "Keyword Injection (Refinement)",
+        "description": "Injects missing JD keywords into the resume during refinement",
+        "default": KEYWORD_INJECTION_PROMPT,
+    },
+    "validation_polish": {
+        "label": "Validation Polish (Refinement)",
+        "description": "Final polish pass removing AI-sounding language",
+        "default": VALIDATION_POLISH_PROMPT,
+    },
+}
+
+
+@router.get("/system-prompts", response_model=SystemPromptsResponse)
+async def get_system_prompts() -> SystemPromptsResponse:
+    """Return all system prompts with their current value and built-in default."""
+    stored = _load_config()
+    overrides: dict[str, str] = stored.get("system_prompt_overrides", {})
+
+    prompts: dict[str, dict[str, str]] = {}
+    for key, info in SYSTEM_PROMPT_REGISTRY.items():
+        prompts[key] = {
+            "label": info["label"],
+            "description": info["description"],
+            "default": info["default"],
+            "current": overrides.get(key, ""),
+        }
+    return SystemPromptsResponse(prompts=prompts)
+
+
+@router.put("/system-prompts", response_model=SystemPromptsResponse)
+async def update_system_prompts(
+    request: SystemPromptsUpdateRequest,
+) -> SystemPromptsResponse:
+    """Update system prompt overrides. Empty string = reset to default."""
+    stored = _load_config()
+    overrides: dict[str, str] = stored.get("system_prompt_overrides", {})
+
+    for key, value in request.overrides.items():
+        if key not in SYSTEM_PROMPT_REGISTRY:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown prompt key: {key}",
+            )
+        overrides[key] = value.strip()
+
+    stored["system_prompt_overrides"] = overrides
+    _save_config(stored)
+
+    prompts: dict[str, dict[str, str]] = {}
+    for key, info in SYSTEM_PROMPT_REGISTRY.items():
+        prompts[key] = {
+            "label": info["label"],
+            "description": info["description"],
+            "default": info["default"],
+            "current": overrides.get(key, ""),
+        }
+    return SystemPromptsResponse(prompts=prompts)

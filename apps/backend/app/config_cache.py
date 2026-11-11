@@ -61,6 +61,13 @@ def load_config() -> dict[str, Any]:
         return {}
 
 
+def get_system_prompt_override(key: str) -> str:
+    """Return the user's override for a system prompt, or empty string if none."""
+    config = load_config()
+    overrides: dict[str, str] = config.get("system_prompt_overrides", {})
+    return overrides.get(key, "")
+
+
 def get_content_language() -> str:
     """Get configured content language from cached config."""
     config = load_config()
