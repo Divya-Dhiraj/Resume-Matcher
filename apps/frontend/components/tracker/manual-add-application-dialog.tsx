@@ -198,16 +198,15 @@ export function ManualAddApplicationDialog({
     runPipeline();
   }, [runPipeline]);
 
-  const toggleKeyword = useCallback(
-    (keyword: string) => {
-      const next = confirmedSkills.includes(keyword)
-        ? confirmedSkills.filter((k) => k !== keyword)
-        : [...confirmedSkills, keyword];
-      setConfirmedSkills(next);
-      runPipeline(next, true);
-    },
-    [confirmedSkills, runPipeline]
-  );
+  const toggleKeyword = useCallback((keyword: string) => {
+    setConfirmedSkills((prev) =>
+      prev.includes(keyword) ? prev.filter((k) => k !== keyword) : [...prev, keyword]
+    );
+  }, []);
+
+  const handleRetailor = useCallback(() => {
+    runPipeline(confirmedSkills, true);
+  }, [confirmedSkills, runPipeline]);
 
   const handleSave = useCallback(async () => {
     if (!previewResult) return;
@@ -505,7 +504,7 @@ export function ManualAddApplicationDialog({
                   {review.missing_keywords && review.missing_keywords.length > 0 && (
                     <div className="space-y-1">
                       <span className="font-mono text-xs uppercase text-ink-soft">
-                        Missing keywords — click to add and re-tailor:
+                        Missing keywords — select skills, then re-tailor:
                       </span>
                       <div className="flex flex-wrap gap-1">
                         {review.missing_keywords.map((kw) => {
@@ -527,6 +526,19 @@ export function ManualAddApplicationDialog({
                           );
                         })}
                       </div>
+                      {confirmedSkills.length > 0 && (
+                        <Button
+                          onClick={handleRetailor}
+                          disabled={submitting}
+                          className="mt-2 text-xs"
+                        >
+                          {submitting ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            `Re-tailor with ${confirmedSkills.length} keyword${confirmedSkills.length > 1 ? 's' : ''}`
+                          )}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
