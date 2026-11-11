@@ -217,6 +217,7 @@ class Settings(BaseSettings):
         "groq",
         "ollama",
         "claude_code_cli",
+        "gemini_cli",
     ] = "openai"
     llm_model: str = "gpt-5-nano-2025-08-07"
     llm_api_key: str = ""

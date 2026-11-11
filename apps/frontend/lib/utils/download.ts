@@ -1,3 +1,50 @@
+declare global {
+  interface Window {
+    showSaveFilePicker?: (options?: {
+      suggestedName?: string;
+      types?: Array<{ description: string; accept: Record<string, string[]> }>;
+    }) => Promise<FileSystemFileHandle>;
+  }
+}
+
+const _fileHandles = new Map<string, FileSystemFileHandle>();
+
+export function hasSavedFileHandle(key = 'resume'): boolean {
+  return _fileHandles.has(key);
+}
+
+export function clearSavedFileHandles(): void {
+  _fileHandles.clear();
+}
+
+export async function saveToLocalFile(
+  blob: Blob,
+  suggestedName: string,
+  key = 'resume'
+): Promise<boolean> {
+  if (typeof window === 'undefined' || !('showSaveFilePicker' in window)) {
+    return false;
+  }
+  try {
+    let handle = _fileHandles.get(key);
+    if (!handle) {
+      handle = await window.showSaveFilePicker({
+        suggestedName,
+        types: [{ description: 'PDF', accept: { 'application/pdf': ['.pdf'] } }],
+      });
+      _fileHandles.set(key, handle);
+    }
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return true;
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === 'AbortError') return false;
+    _fileHandles.delete(key);
+    throw e;
+  }
+}
+
 export function downloadBlobAsFile(blob: Blob, filename: string): void {
   if (typeof document === 'undefined') return;
   if (!document.body) return;

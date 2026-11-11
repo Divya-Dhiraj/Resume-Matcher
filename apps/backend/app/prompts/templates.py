@@ -212,7 +212,7 @@ Rules:
 Resume to parse:
 {resume_text}"""
 
-EXTRACT_KEYWORDS_PROMPT = """Extract job requirements as JSON. Output ONLY the JSON object, no other text.
+EXTRACT_KEYWORDS_PROMPT = """Extract job requirements AND role/company ecosystem keywords as JSON. Output ONLY the JSON object, no other text.
 
 INPUT CLEANING — the pasted text may contain noise copied along with the job posting:
 navigation links, cookie banners, "similar jobs", "about the company" boilerplate,
@@ -221,16 +221,22 @@ or unrelated job listings. IGNORE all of that. Extract ONLY from the actual job
 posting: the role title, company name, responsibilities, requirements, qualifications,
 and nice-to-haves. If multiple job postings appear, use only the FIRST one.
 
+DEEP KEYWORD EXTRACTION — CRITICAL:
+Do NOT just extract 5-10 surface nouns. Perform a comprehensive ATS and domain extraction:
+1. "required_skills": All hard technical skills, tools, languages, platforms, methodologies, and core competencies explicitly required or central to the responsibilities (aim for 12-18 concrete, ATS-scannable terms). Include standard canonical names (e.g., if JD says "Data Bricks", normalize to "Databricks"; if it says "BRD/FRS", include "Business Requirement Documents (BRD)" and "Functional Requirement Specifications (FRS)").
+2. "preferred_skills": Nice-to-have skills, domain knowledge, secondary tools, AND high-value industry/role-standard tools and competencies commonly expected for this exact role archetype and company industry (aim for 8-12 terms).
+3. "keywords": Additional domain keywords, methodologies, frameworks, process terms, and role/industry ecosystem keywords common for this type of role and company (e.g., for a Global Data Analyst at a semiconductor/manufacturing company: "Data Governance", "Data Lineage", "ETL Pipelines", "Dimensional Modeling", "Master Data Management", "Root Cause Analysis", "Stakeholder Management", "Agile/Scrum", "Supply Chain Analytics").
+
 Example format:
 {{
   "company": "Acme Corp",
   "role": "Senior Backend Engineer",
-  "required_skills": ["Python", "AWS"],
-  "preferred_skills": ["Kubernetes"],
+  "required_skills": ["Python", "AWS", "PostgreSQL", "REST APIs", "Microservices", "Docker"],
+  "preferred_skills": ["Kubernetes", "Terraform", "CI/CD", "Redis", "GraphQL", "Event-Driven Architecture"],
   "experience_requirements": ["5+ years"],
   "education_requirements": ["Bachelor's in CS"],
   "key_responsibilities": ["Lead team"],
-  "keywords": ["microservices", "agile"],
+  "keywords": ["distributed systems", "agile", "system design", "observability", "high availability", "scalability"],
   "experience_years": 5,
   "seniority_level": "senior"
 }}
@@ -257,18 +263,33 @@ an English resume works:
 Job description:
 {job_description}"""
 
+COMPANY_ECOSYSTEM_PLAUSIBILITY_RULES = """COMPANY & TECH-STACK PLAUSIBILITY GUARDRAILS (MANDATORY FOR ALL EXTRAPOLATION):
+Before adding or substituting ANY tool, cloud platform, ERP, or domain term into a specific workExperience[i] or personalProjects[i] entry, you MUST check whether that company actually uses that technology and whether it makes sense in that company's real-world ecosystem:
+1. NEVER inject a competitor's proprietary cloud or internal tool into a company known for its own stack:
+   - At Amazon / AWS: NEVER add Microsoft Azure, Google Cloud (GCP), BigQuery, Snowflake, or Power BI into Amazon work experience bullets. Amazon uses AWS (S3, Redshift, Glue, Athena, EMR, Lambda, SageMaker), Amazon QuickSight, Amazon Cradle, Datanet, and Python/SQL.
+   - At Microsoft: NEVER add AWS QuickSight or GCP BigQuery into Microsoft experience; use Azure, Synapse, Fabric, Power BI, SQL Server.
+   - At Google: NEVER add AWS or Azure into Google experience; use GCP, BigQuery, Looker, Dataflow.
+   - At SAP or SAP-centric enterprise consulting (e.g., SAP BW/4HANA role at Accenture): keep SAP ecosystem tools (SAP BW/4HANA, S/4HANA, ABAP, SAP BODS, SAP Analytics Cloud, BEx, HANA SQL) or neutral enterprise tools (SQL, Python, Power BI, Azure/Databricks if client-neutral, JIRA, Confluence, BRD/FRS, UAT).
+   - At hardware / manufacturing / engineering companies (e.g., KraussMaffei, attocube, Bosch, Siemens) or universities: use their actual stack (ERP, Python, SQL, C#, Power BI, Git, Confluence, Jira) or vendor-neutral JD methodologies (data modeling, data profiling, source-to-target mapping, entity-relationship diagrams, data quality assessment, UAT, BRD/FRS, KPI definition, stakeholder alignment).
+2. WHERE TO PLACE COMPANY-INCOMPATIBLE JD TOOLS (like Azure or Databricks when the candidate worked at Amazon):
+   - Add them to the global Skills section (`additional.technicalSkills`) if confirmed by the candidate or part of the target skill plan.
+   - Place vendor-specific tools ONLY in roles where they are plausible (e.g., a consulting role at Accenture that serves diverse enterprise clients, or a general project) OR keep the workExperience bullets focused on the transferable methodology/competency (e.g., "cloud data pipelines", "distributed ETL workflows", "medallion data architecture", "source-to-target mapping", "data profiling") using the employer's actual platform (e.g., AWS S3/Redshift at Amazon).
+3. NEVER fabricate the hiring company's specific product/hardware into past employers from unrelated industries (e.g., if the hiring company makes semiconductor test equipment, do NOT claim an e-commerce role at Amazon or a plastics machinery role at KraussMaffei was building "semiconductor test equipment" — instead emphasize the shared analytical/engineering competencies like high-dimensional sensor/production data analysis, defect segmentation, ERP cost mapping, and automated ETL)."""
+
 AGGRESSIVE_TRUTHFULNESS_TEMPLATE = """LINGUISTIC TERMINOLOGY TRANSLATION RULES — this is an authorized career document. The candidate has approved this translation exercise for maximum JD alignment.
 
-CORE PRINCIPLE: AGGRESSIVE ADJACENT EXTRAPOLATION
+CORE PRINCIPLE: AGGRESSIVE ADJACENT EXTRAPOLATION WITH COMPANY PLAUSIBILITY
 The candidate's real work ecosystem is MUCH broader than what they wrote down. For every role, think about:
 - Upstream: planning, requirements gathering, stakeholder alignment, architecture decisions
 - Core: the tools, frameworks, methodologies, and practices standard in that domain
 - Downstream: deployment, monitoring, reporting, impact measurement, documentation
 - Adjacent: cross-functional collaboration, mentoring, process improvement, compliance
 
-1. TRANSLATE and EXPAND using the JD's exact terminology. Map every candidate experience to JD keywords — use the JD's words, not synonyms.
+{company_plausibility_rules}
+
+1. TRANSLATE and EXPAND using the JD's exact methodology and competency terminology. Map every candidate experience to JD keywords — use the JD's words for methodologies, processes, and deliverables, while respecting each past employer's real tech stack.
 2. {rule_7}
-3. AGGRESSIVELY add JD keywords to the skills section. If the candidate worked in a domain, they can list the standard tools and practices of that domain that appear in the JD. A web developer can list specific frameworks from the JD. A data person can list specific BI tools. A team lead can list stakeholder management, cross-functional collaboration, etc.
+3. AGGRESSIVELY add JD keywords and confirmed skills to the skills section (`additional.technicalSkills`).
 4. Reorder all skills and bullets by JD relevance. Remove content irrelevant to this role.
 5. Keep employer names, job titles, and date ranges exactly as they appear.
 6. Each bullet max 20-25 words. Lead with a strong action verb + JD keyword.
@@ -287,6 +308,7 @@ CONSERVATIVE_TRUTHFULNESS_TEMPLATE = """LINGUISTIC TERMINOLOGY TRANSLATION RULES
 8. Preserve factual accuracy — translate the language of achievements, not the achievements themselves
 9. You may REMOVE skills, certifications, or awards that are clearly irrelevant to the target role. Reorder remaining items by relevance to the JD. Keep items that are broadly valuable (e.g., leadership, communication).
 10. You MAY add a skill if the candidate's described work clearly involved it (e.g., someone who "built REST APIs" can list "API Development") — this is terminology translation, not fabrication.
+{company_plausibility_rules}
 {confirmed_skills_block}
 This is the same discipline used by professional resume writers. The candidate authorized this translation.
 """
@@ -303,11 +325,15 @@ def _build_truthfulness_rules(
     extrapolation_mode: str = "aggressive",
 ) -> str:
     if confirmed_skills:
-        block = "\nThe candidate has CONFIRMED they possess these skills. Add them to the skills section and weave them into relevant bullet points:\n" + ", ".join(confirmed_skills) + "\n"
+        block = "\nThe candidate has CONFIRMED they possess these skills. Add them to the skills section and weave them into relevant bullet points (respecting each past employer's tech stack plausibility):\n" + ", ".join(confirmed_skills) + "\n"
     else:
         block = ""
     template = EXTRAPOLATION_MODE_TEMPLATES.get(extrapolation_mode, AGGRESSIVE_TRUTHFULNESS_TEMPLATE)
-    return template.format(rule_7=rule_7, confirmed_skills_block=block)
+    return template.format(
+        rule_7=rule_7,
+        confirmed_skills_block=block,
+        company_plausibility_rules=COMPANY_ECOSYSTEM_PLAUSIBILITY_RULES,
+    )
 
 
 AGGRESSIVE_RULE7 = {
@@ -467,35 +493,45 @@ DEFAULT_IMPROVE_PROMPT_ID = "keywords"
 # Backward-compatible alias
 IMPROVE_RESUME_PROMPT = IMPROVE_RESUME_PROMPT_FULL
 
-COVER_LETTER_PROMPT = """You are a Cover Letter Architect performing a LINGUISTIC TERMINOLOGY TRANSLATION exercise on an authorized career document.
+COVER_LETTER_PROMPT = """You are an elite Executive Career Coach and Cover Letter Architect writing a high-impact, story-driven cover letter.
 
-## CORE DIRECTIVE: ADJACENT EXTRAPOLATION (NO FOREIGN FABRICATION)
-1. Never invent foreign experience. No tools, domains or responsibilities that could not logically have existed inside the candidate's actual past projects.
-2. Extrapolate the surrounding ecosystem. For what the candidate DID do: surface upstream planning, downstream impact, and adjacent methodology that naturally occurred around their real work.
-3. Aggressive terminology translation. Rename existing tasks and deliverables using exact JD keywords.
-4. Hard anchor constraint. Employer names, job titles, dates stay 100% anchored.
+## CORE PHILOSOPHY: AUTHENTIC STORYLINE & VALUE PROPOSITION (NOT A KEYWORD DUMP)
+A great cover letter is NOT a mechanical list of ATS keywords or a robotic summary of the job description. It is a compelling, human-written narrative that connects the candidate's real career journey, motivation, technical & non-technical strengths, and personal working traits to the company's mission and the role's challenges. Use natural adjacent extrapolation and JD terminology where it fits the story organically, without turning the letter into a keyword checklist.
 
-## JD DNA DECONSTRUCTION (do this mentally first)
-- Top 10 Hard Keywords from the JD, ranked by frequency x importance
-- Top 5 Role & Company Archetype Signals (what culture this company values)
-- The hiring pain: the ONE problem this role exists to solve
+## STRICT RULES AGAINST BAD OPENINGS (CRITICAL):
+- NEVER start the 1st paragraph with a Wikipedia-style corporate summary or flattery lecture about the company (e.g., BANNED: "As the global market leader of...", "With Company X leading the industry in...", "In an era where data drives..."). Hiring managers know what their company does — lecturing them about their own company in sentence 1 reads as artificial and robotic.
+- Instead, use a **widely accepted, direct, standard professional opening**:
+  1. **Sentence 1 (Direct Purpose & Role Anchor):** Open clearly and professionally by stating the exact role you are applying for, your core professional identity/background (e.g., Master's background + years/domains of experience), and a genuine, specific reason *why* this role and company excite you.
+  2. **Sentence 2–3 (Motivation & Value Hook):** Express authentic motivation and interest in their mission/team, and state your core value proposition — how your combination of technical depth and business/stakeholder mindset positions you to contribute immediately.
 
-## ADJACENT EXTRAPOLATION MAPPING
-For each Top-10 keyword the resume does not cover: find the candidate's closest real anchor and map a plausible adjacent extension. REFUSE any extension requiring tools/domains the candidate never touched.
+## 4-PARAGRAPH NARRATIVE ARC (280-360 words total body):
+1. **Paragraph 1 — Standard Professional Opening, Motivation & Core Fit:**
+   - State the position applied for clearly in the first sentence.
+   - Share genuine motivation and interest in the company's domain/mission and why this specific role is the natural next step in your journey.
+   - Introduce your signature profile: bridging deep technical execution with business understanding.
+2. **Paragraph 2 — The Technical Storyline (Concrete Experience & Impact):**
+   - Tell a cohesive story connecting 2 of your most relevant roles/projects (e.g., enterprise scale at Amazon/Accenture, engineering precision at attocube/KraussMaffei, or applied AI/data architecture in your Master's research) rather than listing bullet points.
+   - Show *how* you solve problems: the technical skills you rely on (e.g., SQL, Python, cloud data ecosystems, BI/data modeling, end-to-end pipelines) and the tangible outcomes you delivered for stakeholders.
+   - **Company Plausibility Guardrail:** Only attribute tools to past employers that actually use them (e.g., AWS/Redshift/QuickSight at Amazon, SAP at Accenture). Mention additional JD target tools naturally as part of your broader technical toolkit or adaptability.
+3. **Paragraph 3 — Non-Technical Strengths, Personal Traits & Value to the Team:**
+   - Highlight the non-technical skills and personal characteristics that make you effective in the real world: structured analytical thinking, curiosity, ownership, cross-functional communication, translating ambiguous business questions into clear technical specifications, and thriving in international/agile teams.
+   - Connect these traits directly to how you will bring value to *this* team and help solve their day-to-day operational and strategic challenges.
+4. **Paragraph 4 — Warm, Confident Call to Action (Initial Discussion):**
+   - Reiterate your enthusiasm for bringing your technical and interpersonal strengths to the team.
+   - Explicitly state that you **would welcome / really love the opportunity for an initial discussion** to explore how you can contribute to their upcoming initiatives.
+   - Include practical availability/notice details naturally if relevant, and close warmly.
 
-## GERMAN FORMATTING (DIN 5008 Form B Anschreiben) — apply when JD is German
-If the JD is in German, output a formal Anschreiben:
+## GERMAN FORMATTING (DIN 5008 Form B Anschreiben) — apply when JD is German and output_language is German
+If output_language is German, output a formal Anschreiben:
 1. Sender block (name, address, phone, email)
 2. Recipient block (company, department, hiring manager with Frau/Herr, address)
-3. Place and date (right-aligned, DD.MM.YYYY)
-4. Betreff (bold): "Bewerbung als <Position> - Referenznummer <ID>"
+3. Place and date (DD.MM.YYYY)
+4. Betreff: "Bewerbung als <Position>"
 5. Salutation: "Sehr geehrte Frau/Herr <Name>," (fallback: "Sehr geehrte Damen und Herren,")
-6. Body (3-4 paragraphs, one page total)
-7. Closing: "Mit freundlichen Grussen" + typed name
-8. Anlagen line
-Use formal "Sie" register. No contractions, no colloquialisms.
+6. Body following the 4-paragraph storyline arc above in natural, idiomatic professional German ("Sie" register)
+7. Closing: "Mit freundlichen Grüßen" + typed name
 
-## FOR ALL COVER LETTERS (English or other non-German JDs):
+## FOR ALL COVER LETTERS:
 IMPORTANT: Write in {output_language}.
 
 Job Description:
@@ -504,44 +540,60 @@ Job Description:
 Candidate Resume (JSON):
 {resume_data}
 
-## STRUCTURE (include ALL of these sections):
+## HEADER & SIGN-OFF STRUCTURE:
 1. HEADER BLOCK:
-   - Candidate full name, address, phone, email (from resume personalInfo)
+   - Candidate full name, location, phone, email (from resume personalInfo)
    - Blank line
-   - Date (today's date in locale-appropriate format)
+   - Current Date (November 2026 — use current realistic date, NEVER a 2024 date!)
    - Blank line
-   - Recipient: Hiring Manager / HR Department name (extract from JD if available)
-   - Company name and address (extract from JD)
+   - Recipient: Hiring Team / Department & Company name and location (extract from JD)
    - Blank line
-   - Subject line: "Re: Application for <Role Title>" (extract role from JD)
+   - Subject line: "Re: Application for <Role Title>"
    - Blank line
    - Salutation: "Dear Hiring Manager," or "Dear <Name>," if named in JD
-
-2. BODY (3-4 substantial paragraphs, 250-400 words total):
-   - Opening paragraph: Hook the hiring pain. Reference ONE specific thing from the JD (product, tech stack, business problem). Not generic excitement. State the role you are applying for.
-   - Middle paragraph(s): Pick 2-3 qualifications from resume that DIRECTLY match stated requirements. Translate terminology using exact JD keywords. Be specific — name the tools, the scale, the outcome. Each paragraph should address a different JD requirement cluster.
-   - Closing paragraph: Restate fit in one sentence, state availability, provide a simple call to action. No desperate enthusiasm.
-
+2. BODY:
+   - The 4-paragraph storyline arc defined above (flowing prose, NO bullet points, NO em-dashes).
 3. SIGN-OFF:
-   - "Sincerely," (or locale-appropriate equivalent)
+   - "Sincerely," or "Best regards," (or locale-appropriate equivalent)
    - Candidate full name
 
-## RULES:
-- If resume shows career transition, frame the pivot as intentional and relevant
-- Extract company name and role from JD. No placeholders like [Company] or [Position].
-- Use adjacent extrapolation to connect resume experience to JD requirements
-- Tone: Confident peer, not eager applicant. Professional but not stiff.
-- Do NOT use em dash anywhere in the output
-- BANNED: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, "passionate about", "excited to", "team player", "motivated self-starter", "hit the ground running"
-
-## SELF-REVIEW (before outputting)
-- Does every factual claim trace back to the resume?
-- Would each claim survive one interview follow-up?
-- Is it one page (250-400 words body)?
-- Does it have a proper header with To address and subject line?
-- Are there any banned words or AI tells?
+## STYLE & TONE GUARDRAILS:
+- Tone: Warm, articulate, grounded, and confident — sounds like a thoughtful, high-caliber professional speaking to a future manager, not an AI trying to game an ATS.
+- Do NOT stuff keywords mechanically; weave only 4-6 core domain concepts where they fit the story naturally.
+- Do NOT use em-dashes ("—") anywhere in the output.
+- BANNED AI CLICHÉS: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, "hit the ground running", "As the global market leader".
 
 Output plain text only. No JSON, no markdown formatting."""
+
+COVER_LETTER_CRITIQUE_REFINE_PROMPT = """You are an Executive Hiring Manager and Editorial Coach reviewing a draft cover letter in a closed-loop storytelling refinement pass.
+
+Evaluate the draft cover letter against these 5 narrative quality criteria and rewrite it so it reads like an exceptional, authentic human-written letter:
+
+1. **OPENING PARAGRAPH CHECK (CRITICAL):**
+   - Does the 1st sentence start with a cheesy/robotic lecture about the company ("As the global market leader...", "In today's fast-paced world...")?
+   - FIX: Ensure the 1st paragraph opens in the widely accepted standard professional way: directly stating the role applied for, who the candidate is, and their genuine motivation/interest in the role and company.
+2. **STORYLINE vs. KEYWORD DUMP CHECK:**
+   - Does the middle section read like a mechanical list of ATS keywords or resume bullet points?
+   - FIX: Transform it into a smooth, engaging narrative arc that connects the candidate's real experiences (keeping company tech stacks 100% accurate, e.g., AWS at Amazon) and explains *why* and *how* they solved problems.
+3. **TECHNICAL + NON-TECHNICAL + PERSONAL TRAITS BALANCE:**
+   - Does the letter showcase both technical capability AND non-technical strengths / personal characteristics (ownership, structured problem-solving, curiosity, stakeholder empathy, cross-functional communication, adaptability) and how those bring concrete value to the company?
+4. **CALL TO ACTION FOR INITIAL DISCUSSION:**
+   - Does the closing paragraph warmly and naturally express that the candidate would really love / welcome the opportunity for an initial discussion to explore how they can bring value to the team?
+5. **DATE & FORMATTING SANITY CHECK:**
+   - Ensure the date in the header is current (November 2026, NEVER 2024), no em-dashes ("—") appear anywhere, and every claim is grounded in the candidate's resume.
+
+IMPORTANT: Write in {output_language}.
+
+Job Description:
+{job_description}
+
+Candidate Resume (JSON):
+{resume_data}
+
+Draft Cover Letter:
+{draft_cover_letter}
+
+Output ONLY the final refined cover letter as plain text. No preamble, no critique notes, no markdown fences."""
 
 OUTREACH_MESSAGE_PROMPT = """Generate a cold outreach message for LinkedIn or email about this job opportunity.
 
@@ -703,11 +755,22 @@ Output this exact JSON format:
 
 DIFF_IMPROVE_PROMPT = """You are a Resume Architect performing a LINGUISTIC TERMINOLOGY TRANSLATION exercise on an authorized career document.
 
-## CORE DIRECTIVE: MAXIMUM ADJACENT EXTRAPOLATION
+## CORE DIRECTIVE: MAXIMUM ADJACENT EXTRAPOLATION WITH COMPANY PLAUSIBILITY
 This is an authorized linguistic terminology translation exercise. Target 95%+ ATS keyword match.
 1. Extrapolate the FULL surrounding ecosystem. For what the candidate did: what upstream planning, downstream impact, standard industry practice, and adjacent methodology naturally occurred around this work? Map ALL of it to JD keywords.
-2. Aggressive terminology translation. Rename existing tasks, workflows and deliverables using the exact top keywords and competency nouns from the JD. Use the JD's words, never synonyms.
+2. Aggressive terminology translation. Rename existing tasks, workflows and deliverables using the exact top keywords and competency nouns from the JD — while writing natural, specific sentences (NEVER copy-paste full JD sentences verbatim into a bullet; weave the exact JD keyword terms into the candidate's real project context and outcomes).
 3. Anchor constraint: Employer names, job titles, and dates stay unchanged.
+
+## COMPANY & TECH-STACK PLAUSIBILITY GUARDRAILS (CRITICAL — CHECK BEFORE EVERY CHANGE)
+Before adding or substituting ANY tool, cloud platform, ERP, or industry term into a specific `workExperience[i]` or `personalProjects[i]` entry, you MUST verify whether that company actually uses those tools and whether it makes sense in that company's perspective:
+- **Amazon / AWS (`Amazon EU SARL`, etc.)**: NEVER add `Microsoft Azure`, `Google Cloud (GCP)`, `BigQuery`, `Snowflake`, or `Power BI` into Amazon work experience bullets! It is nonsensical to put Azure on an Amazon experience because Amazon uses AWS (`S3`, `Redshift`, `Glue`, `Athena`, `EMR`, `SageMaker`) and its own tools (`Amazon QuickSight`, `Amazon Cradle`, `Amazon Datanet`). In Amazon bullets, keep AWS/QuickSight/Python/SQL and extrapolate the JD's *methodology and competency* keywords (`data profiling`, `data quality assessment`, `exploratory data analysis`, `source-to-target mapping`, `transformation logic`, `data models`, `KPI definitions`, `data mining`, `segmentation techniques`, `data catalog`, `data governance`).
+- **Microsoft**: Use `Microsoft Azure`, `Power BI`, `Synapse`, `Fabric`, `SQL Server` — never AWS QuickSight or GCP.
+- **Google**: Use `GCP`, `BigQuery`, `Looker` — never AWS or Azure.
+- **Enterprise Consulting (`Accenture`, `Infosys`, etc.)**: Consulting firms serve diverse global enterprise clients across Finance, Supply Chain, and Operations. However, if the role title is specifically `SAP BW/4HANA Consultant`, keep SAP stack anchors (`SAP BW/4HANA`, `S/4HANA`, `ABAP`, `SAP BODS`, `SAP Analytics Cloud`) alongside enterprise data/BA deliverables (`Business Requirement Documents (BRD)`, `Functional Requirement Specifications (FRS)`, `User Acceptance Testing (UAT)`, `source-to-target mapping`, `entity-relationship diagrams`, `data modeling`, `global transformation projects`, `sprint planning`, `backlog refinement`), or frame cross-platform cloud/Databricks/Azure integration as enterprise client data integration where plausible.
+- **Engineering / Manufacturing / Hardware Employers (`attocube systems AG`, `KraussMaffei Technologies`, etc.)**: Use their real tools (`Python`, `SQL`, `Power BI`, `Power Query`, `ERP`, `C#`, `Git`, `Jira`, `Confluence`) and map to JD methodologies (`data profiling`, `data quality assessment`, `entity-relationship diagrams`, `database design`, `remediation strategies`, `technical specifications`, `process flows`).
+- **Industry / Product Boundaries**: NEVER claim a past employer built the hiring company's specific product if that employer is in a different industry (e.g., do NOT say Amazon or KraussMaffei built "semiconductor test systems" just because the hiring company is Advantest). Instead, highlight the shared domain competencies (e.g., high-tech manufacturing, production quality analytics, supply chain operations, automated testing frameworks).
+- **Where to put confirmed JD tools that don't fit a specific past employer's proprietary stack (e.g., `Microsoft Azure`, `Databricks`)**:
+  Always add them to `additional.technicalSkills` (and `customSections` skills blocks if applicable) and `summary`! Only weave them into a `workExperience[i]` bullet if that employer plausibly uses them.
 
 ## JD DNA DECONSTRUCTION (do this mentally before writing changes)
 Before generating changes, analyze the JD to identify:
@@ -717,8 +780,8 @@ Before generating changes, analyze the JD to identify:
 
 ## ADJACENT EXTRAPOLATION MAPPING
 For every Top-15 keyword the resume does NOT already cover verbatim, map:
-- Missing JD Keyword → Candidate's Closest Anchor → Adjacent Extension
-- Be generous — if the candidate worked in the same domain, the keyword is fair game
+- Missing JD Keyword → Candidate's Closest Anchor → Plausible Company-Appropriate Extension
+- Be generous on methodologies, processes, and analytical techniques — if the candidate worked in the same domain, the methodology keyword is fair game. For vendor-specific software/clouds, check company stack compatibility first.
 
 ## BULLET CRAFTING RULES
 Format: keyword-rich, value-oriented bullets. Lead with a strong action verb + JD keyword + concrete outcome.
@@ -734,18 +797,22 @@ Format: keyword-rich, value-oriented bullets. Lead with a strong action verb + J
   3. BANNED words: spearheaded, delve, testament, tapestry, seasoned, results-driven, synergy, leveraged, orchestrated, pivotal, dynamic, utilized, facilitated, endeavored, proactively, holistic, robust, cutting-edge, state-of-the-art. Rewrite any bullet containing these.
 - No "transferable to" or "directly applicable to" hedging language. Either the candidate did it or they did not.
 
-## BULLET CONTROL (count, length & relevance)
+## BULLET CONTROL (count, length & relevance) & SKILLS CURATION LIMITS
 - Most recent and most JD-relevant experience: 4-6 bullets
 - Older or less relevant experience: 2-3 bullets (only what maps to JD)
 - REMOVE bullets that do not contribute to THIS job (action: "remove")
 - BULLET LENGTH: each bullet MUST be 1 line, max 20-25 words. Cut filler ruthlessly — no "responsible for", "tasked with", "in order to". Lead with a strong verb, state the what + metric/result. If a bullet exceeds 25 words, split it or trim it.
+- SKILLS SECTION OPTIMAL LIMITS (DO NOT DUMP EVERYTHING into `additional.technicalSkills`):
+  * Keep the skills section clean, grouped, easy to scan, and within optimal limits (max 6-8 concise items per category).
+  * Only add concrete technical tools, languages, platforms, data/engineering frameworks, and core methodologies (e.g., `Databricks`, `Microsoft Azure`, `Data Modeling`, `Source-to-Target Mapping`) to the skills section.
+  * NEVER dump industry buzzwords (`IoT`, `5G`, `Semiconductor Industry`, `Digital Transformation`), soft skills (`Cross-functional Teams`, `Stakeholder Management`), or generic business departments (`HR Analytics`, `Financial Analytics`, `Operations Management`) into the skills section — weave those into `summary` and `workExperience` bullets instead!
 - Total resume should be 1-2 pages. If over 2 pages, aggressively trim older/irrelevant content
 - Every bullet must earn its place for THIS specific job
 
 ## SELF-REVIEW (run before outputting)
 - Is every JD keyword present somewhere in the resume (skills, bullets, or summary)?
 - Are bullets concise (20-25 words) and keyword-rich?
-- Is the skills section packed with JD-relevant terms?
+- Is the skills section clean, well-organized, and within optimal limits (no keyword dumping)?
 
 Given this resume and job description, output a JSON object with targeted changes.
 
@@ -838,16 +905,22 @@ Output this exact JSON format, nothing else:
 }}"""
 
 
-RESUME_REVIEW_PROMPT = """You are 7 hiring reviewers compressed into one pass. Score this resume against the JD from ALL angles simultaneously. Be brutally honest.
+RESUME_REVIEW_PROMPT = """You are 7 hiring reviewers compressed into one pass. Score this resume against the JD from ALL angles simultaneously.
+
+## CRITICAL CONTEXT & CALIBRATION RULES:
+1. CURRENT YEAR IS 2026 (November 2026): Dates in 2025 and 2026 (such as "Mar 2025 - Feb 2026" or "Dec 2025 - Jun 2026") are HISTORICAL / CURRENT dates, NOT future dates! NEVER flag 2025 or 2026 dates as "future dates" or "impossible chronology".
+2. AUTHORIZED TERMINOLOGY TRANSLATION: This resume was tailored for this JD via authorized linguistic terminology translation and adjacent extrapolation. Do NOT penalize the candidate for using JD terminology or listing JD skills in their skills section/bullets, PROVIDED the tools make sense for the company (e.g., flag if Microsoft Azure was nonsensically added to an Amazon role, or if a past employer in an unrelated industry was claimed to manufacture the hiring company's specific hardware).
+3. EXPERIENCE EVALUATION: Evaluate the candidate's combined full-time, working student (Werkstudent), internship, and academic research experience fairly based on demonstrated technical depth, project complexity, and measurable business outcomes rather than automatically disqualifying for total calendar years.
+4. MISSING KEYWORDS RULE: Only list a keyword in "missing_keywords" if it is genuinely absent from the entire Resume JSON (including `additional.technicalSkills`, `customSections`, `workExperience`, `personalProjects`, and `summary`). If a skill/keyword is already present in the skills section or bullets, do NOT list it in `missing_keywords`.
 
 ## THE 7 REVIEWERS (score each 0-100):
-1. ATS SCREEN: Top-15 keyword verbatim coverage, readability, title/date clarity, contact details, length. Score = (keywords matched / 15) x 100, minus up to 10 for readability issues.
-2. HIRING MANAGER: Can this person do the job on day one? What decided it in the first 10 seconds?
-3. RIVAL APPLICANT: Where is this resume weaker than a strong competitor's?
-4. CEO: What did this person change, and by how much? Impact and scope.
-5. RECRUITER: 30 seconds, top third only. Signal density.
-6. TEAMMATE: How do they work with others? Collaboration signals.
-7. SKEPTIC: Which bullet would be hardest to discuss in an interview? Note areas where the candidate should prepare talking points. Score based on how well the resume tells a coherent story.
+1. ATS SCREEN: Top-15 keyword coverage across skills, summary, and experience bullets, readability, title/date clarity, contact details, length. Score = (keywords matched / 15) x 100, minus up to 10 for readability issues.
+2. HIRING MANAGER: Can this person do the job on day one based on demonstrated technical skills, domain alignment, and project outcomes?
+3. RIVAL APPLICANT: How well does this tailored resume compete on relevant technical stack, analytical depth, and business impact?
+4. CEO: What did this person improve or build, and by how much? Impact, ownership, and scope.
+5. RECRUITER: 30 seconds scan. Signal density, clear skill categorization, and alignment with role requirements.
+6. TEAMMATE: How do they work with others? Cross-functional collaboration, agile delivery, documentation, and stakeholder alignment signals.
+7. SKEPTIC: Are the company-to-tool mappings plausible (e.g., AWS at Amazon, SAP at Accenture, ERP/Power BI at manufacturing firms)? Score high (80-95) when the resume tells a coherent, company-plausible story; penalize only if incompatible competitor tools (like Azure at Amazon) or verbatim copy-pasted JD sentences appear.
 
 Job Description:
 {job_description}
@@ -883,4 +956,4 @@ Output ONLY this JSON:
   "pass": true or false
 }}
 
-"match_score" = mean of all 7 panel_scores. "pass" is true when match_score >= 85 and verdict is INTERVIEW. Focus on JD alignment and keyword coverage, not skepticism about adjacent extrapolation — this is a professional terminology translation exercise."""
+"match_score" = mean of all 7 panel_scores. "pass" is true when match_score >= 85 and verdict is INTERVIEW. Focus on JD alignment, keyword coverage, and company-plausible bullet quality."""

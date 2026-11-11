@@ -19,6 +19,34 @@ _TEXT_VALUE_KEYS = (
     "label",
 )
 _BULLET_PREFIX_RE = re.compile(r"^\s*(?:[-*•]+|\d+[.)])\s*")
+_CAMEL_CASE_START_RE = re.compile(r"^[a-z]+[A-Z0-9]")
+_LEADING_HTML_TAG_RE = re.compile(r"^(\s*(?:<[^>]+>\s*)*)")
+_LEADING_JUNK_RE = re.compile(r"^[\s,;:\-–—•*]+")
+
+
+def _capitalize_bullet_line(line: str) -> str:
+    """Ensure a bullet/description line starts with a capital letter.
+
+    Preserves leading HTML tags (e.g. ``<strong>``) and intentional camelCase
+    identifiers (e.g. ``iOS``, ``eBay``, ``macOS``, ``k8s``, ``gRPC``).
+    """
+    if not line:
+        return line
+    cleaned = re.sub(r" {2,}", " ", line).strip()
+    tag_match = _LEADING_HTML_TAG_RE.match(cleaned)
+    leading_tags = tag_match.group(1) if tag_match else ""
+    body = _LEADING_JUNK_RE.sub("", cleaned[len(leading_tags) :])
+    if not body:
+        return cleaned
+    first_word = body.split()[0] if body.split() else ""
+    if _CAMEL_CASE_START_RE.match(first_word):
+        return f"{leading_tags}{body}"
+    for idx, ch in enumerate(body):
+        if ch.isalpha():
+            if ch.islower():
+                body = body[:idx] + ch.upper() + body[idx + 1 :]
+            break
+    return f"{leading_tags}{body}"
 
 
 def _extract_text_fragments(
@@ -189,7 +217,7 @@ class Experience(BaseModel):
     @field_validator("description", mode="before")
     @classmethod
     def _normalize_description(cls, value: Any) -> list[str]:
-        return _coerce_string_list(value)
+        return [_capitalize_bullet_line(item) for item in _coerce_string_list(value)]
 
     @field_validator("descriptionStyles", mode="before")
     @classmethod
@@ -236,7 +264,7 @@ class Project(BaseModel):
     @field_validator("description", mode="before")
     @classmethod
     def _normalize_description(cls, value: Any) -> list[str]:
-        return _coerce_string_list(value)
+        return [_capitalize_bullet_line(item) for item in _coerce_string_list(value)]
 
     @field_validator("descriptionStyles", mode="before")
     @classmethod
@@ -323,7 +351,7 @@ class CustomSectionItem(BaseModel):
     @field_validator("description", mode="before")
     @classmethod
     def _normalize_description(cls, value: Any) -> list[str]:
-        return _coerce_string_list(value)
+        return [_capitalize_bullet_line(item) for item in _coerce_string_list(value)]
 
     @field_validator("descriptionStyles", mode="before")
     @classmethod
@@ -587,6 +615,8 @@ class ImproveResumeRequest(BaseModel):
     output_language: str | None = None
     include_cover_letter: bool = False
     include_review: bool = False
+    force: bool = False
+    base_resume_data: dict[str, Any] | None = None
 
 
 class ImprovementSuggestion(BaseModel):
@@ -743,6 +773,11 @@ class ImproveResumeConfirmRequest(BaseModel):
     job_id: str
     improved_data: ResumeData
     improvements: list[ImprovementSuggestion]
+    cover_letter: str | None = None
+    review: dict[str, Any] | None = None
+    company: str | None = None
+    role: str | None = None
+    status: str | None = None
 
 
 # Config Models
@@ -809,7 +844,7 @@ class LanguageConfigResponse(BaseModel):
 
     ui_language: str = "en"  # Interface language
     content_language: str = "en"  # Generated content language
-    supported_languages: list[str] = ["en", "es", "zh", "ja", "pt", "fr", "ko"]
+    supported_languages: list[str] = ["en", "es", "zh", "ja", "pt", "fr", "ko", "de"]
 
 
 class PromptOption(BaseModel):

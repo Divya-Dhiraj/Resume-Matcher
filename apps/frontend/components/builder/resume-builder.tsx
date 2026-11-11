@@ -18,6 +18,7 @@ import { ConfirmDialog, type ConfirmDialogProps } from '@/components/ui/confirm-
 import {
   Download,
   Save,
+  HardDriveDownload,
   AlertTriangle,
   ArrowLeft,
   RotateCcw,
@@ -44,6 +45,7 @@ import {
   generateOutreachMessage,
   generateInterviewPrep,
   fetchJobDescription,
+  type ResumeReviewResult,
 } from '@/lib/api/resume';
 import { JDComparisonView } from './jd-comparison-view';
 import { RegenerateWizard } from './regenerate-wizard';
@@ -52,7 +54,14 @@ import { useTranslations } from '@/lib/i18n';
 import { type TemplateSettings, DEFAULT_TEMPLATE_SETTINGS } from '@/lib/types/template-settings';
 import { withLocalizedDefaultSections } from '@/lib/utils/section-helpers';
 import { useLanguage } from '@/lib/context/language-context';
-import { buildResumeFilename, downloadBlobAsFile, openUrlInNewTab } from '@/lib/utils/download';
+import {
+  buildResumeFilename,
+  downloadBlobAsFile,
+  openUrlInNewTab,
+  saveToLocalFile,
+  hasSavedFileHandle,
+  clearSavedFileHandles,
+} from '@/lib/utils/download';
 import { normalizeResumeForRender, normalizeResumeForSave } from '@/lib/utils/resume-normalization';
 import {
   buildResumeDraft,
@@ -224,6 +233,11 @@ const ResumeBuilderContent = () => {
   const searchParams = useSearchParams();
   const router = useRouter();
   const resumeId = searchParams.get('id');
+
+  useEffect(() => {
+    clearSavedFileHandles();
+  }, [resumeId]);
+
   // Monotonic edit counter. It is deliberately never reset: two savers can be
   // in flight (a queued manual flush behind an autosave), and resetting it to 0
   // on whichever finishes first invalidated the other's captured baseline, so a
@@ -275,6 +289,7 @@ const ResumeBuilderContent = () => {
   // JD comparison state
   const [jobDescription, setJobDescription] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [jdReview, setJdReview] = useState<ResumeReviewResult | null>(null);
   const [jobContextStatus, setJobContextStatus] = useState<JobContextStatus>('idle');
 
   // AI Regenerate wizard
@@ -531,12 +546,20 @@ const ResumeBuilderContent = () => {
       if (isTailoredResume && resumeId) {
         setJobDescription(null);
         setJobId(null);
+        setJdReview(
+          (improvedData?.data?.resume_id === resumeId
+            ? (improvedData?.data?.review as ResumeReviewResult | undefined)
+            : undefined) ?? null
+        );
         setJobContextStatus('loading');
         try {
           const data = await fetchJobDescription(resumeId);
           if (!cancelled) {
             setJobDescription(data.content);
             setJobId(data.job_id);
+            if (data.review) {
+              setJdReview(data.review);
+            }
             setJobContextStatus('available');
           }
         } catch (err) {
@@ -545,6 +568,7 @@ const ResumeBuilderContent = () => {
             console.warn('Could not fetch job description:', err);
             setJobDescription(null);
             setJobId(null);
+            setJdReview(null);
             setJobContextStatus('missing');
           }
         }
@@ -552,6 +576,7 @@ const ResumeBuilderContent = () => {
         // Clear job description when switching to non-tailored resume
         setJobDescription(null);
         setJobId(null);
+        setJdReview(null);
         setJobContextStatus('idle');
       }
     };
@@ -560,7 +585,7 @@ const ResumeBuilderContent = () => {
     return () => {
       cancelled = true;
     };
-  }, [isTailoredResume, resumeId]);
+  }, [improvedData?.data?.resume_id, improvedData?.data?.review, isTailoredResume, resumeId]);
 
   const handleUpdate = useCallback(
     (newData: ResumeData) => {
@@ -845,6 +870,52 @@ const ResumeBuilderContent = () => {
         errorMessage = `${t('builder.alerts.downloadFailed')}: ${error.message}`;
       }
       showNotification(errorMessage, 'danger');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleSaveToFile = async () => {
+    if (!resumeId) return;
+    const didSave = await flushResumeChanges(true);
+    if (!didSave) return;
+    try {
+      setIsDownloading(true);
+      const blob = await downloadResumePdf(resumeId, templateSettings, uiLanguage);
+      const company = getCompanyFromTitle(resumeTitle);
+      const userName = resumeData.personalInfo?.name?.trim() || null;
+      const filename = buildResumeFilename(userName, company, resumeId, 'resume');
+      const saved = await saveToLocalFile(blob, filename, 'resume');
+      if (saved) {
+        showNotification('Resume saved to file', 'success');
+      } else {
+        downloadBlobAsFile(blob, filename);
+      }
+    } catch (error) {
+      console.error('Save to file failed:', error);
+      showNotification('Save to file failed', 'danger');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  const handleSaveCoverLetterToFile = async () => {
+    if (!resumeId || !coverLetter) return;
+    try {
+      setIsDownloading(true);
+      const blob = await downloadCoverLetterPdf(resumeId, templateSettings.pageSize, uiLanguage);
+      const company = getCompanyFromTitle(resumeTitle);
+      const userName = resumeData.personalInfo?.name?.trim() || null;
+      const filename = buildResumeFilename(userName, company, resumeId, 'cover-letter');
+      const saved = await saveToLocalFile(blob, filename, 'cover-letter');
+      if (saved) {
+        showNotification('Cover letter saved to file', 'success');
+      } else {
+        downloadBlobAsFile(blob, filename);
+      }
+    } catch (error) {
+      console.error('Save cover letter to file failed:', error);
+      showNotification('Save to file failed', 'danger');
     } finally {
       setIsDownloading(false);
     }
@@ -1155,6 +1226,16 @@ const ResumeBuilderContent = () => {
                     <Download className="w-4 h-4" />
                     {isDownloading ? t('common.generating') : t('common.download')}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveToFile}
+                    disabled={!resumeId || isDownloading}
+                    title="Save PDF to a local file — overwrites on subsequent saves"
+                  >
+                    <HardDriveDownload className="w-4 h-4" />
+                    {hasSavedFileHandle('resume') ? 'OVERWRITE' : 'SAVE FILE'}
+                  </Button>
                 </>
               )}
 
@@ -1182,6 +1263,16 @@ const ResumeBuilderContent = () => {
                   >
                     <Download className="w-4 h-4" />
                     {isDownloading ? t('common.generating') : t('common.download')}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSaveCoverLetterToFile}
+                    disabled={!resumeId || isDownloading}
+                    title="Save cover letter PDF to a local file — overwrites on subsequent saves"
+                  >
+                    <HardDriveDownload className="w-4 h-4" />
+                    {hasSavedFileHandle('cover-letter') ? 'OVERWRITE' : 'SAVE FILE'}
                   </Button>
                 </>
               )}
@@ -1384,12 +1475,12 @@ const ResumeBuilderContent = () => {
                   {
                     id: 'cover-letter',
                     label: t('builder.previewTabs.coverLetter'),
-                    disabled: !coverLetter,
+                    disabled: !isTailoredResume && !coverLetter,
                   },
                   {
                     id: 'outreach',
                     label: t('builder.previewTabs.outreach'),
-                    disabled: !outreachMessage,
+                    disabled: !isTailoredResume && !outreachMessage,
                   },
                   {
                     id: 'interview-prep',
@@ -1471,6 +1562,9 @@ const ResumeBuilderContent = () => {
                   resumeData={resumeData}
                   resumeId={resumeId}
                   jobId={jobId}
+                  initialReview={jdReview}
+                  onReviewChange={setJdReview}
+                  onResumeDataChange={setResumeData}
                 />
               )}
             </div>

@@ -21,14 +21,19 @@ import logging
 from typing import Any
 
 from app.config import load_config_file
-from app.llm import complete, get_llm_config
+from app.llm import (  # type: ignore
+    _CLI_BRIDGE_PROVIDERS,
+    _bridge_cli_and_model,
+    _claude_bridge_base_url,
+    complete,
+    get_llm_config,
+)
 from app.services.claude_bridge_client import (
     PANEL_PERSONAS,
     PERSONAS,
     ClaudeBridgeClient,
     PanelDepth,
 )
-from app.llm import _claude_bridge_base_url, _claude_model_from_config  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +64,11 @@ async def complete_with_panel(
     When omitted, a generic merger is used.
     """
     config = get_llm_config()
-    depth = _active_panel_depth() if config.provider == "claude_code_cli" else "light"
+    depth = (
+        _active_panel_depth()
+        if config.provider == "claude_code_cli"
+        else "light"
+    )
 
     if config.provider != "claude_code_cli" or depth == "light":
         # Fast path: single provider call, personas don't apply.
@@ -77,14 +86,20 @@ async def complete_with_panel(
         _claude_bridge_base_url(config.api_base),
         timeout_s=180,
     )
-    model = _claude_model_from_config(config.model)
+    cli_name, model = _bridge_cli_and_model(config)
 
     async def one(persona: str) -> tuple[str, str]:
         sys = (system_prompt or "").strip()
         persona_prompt = PERSONAS[persona]
         full_system = f"{sys}\n\n{persona_prompt}" if sys else persona_prompt
         try:
-            return persona, await client.generate(prompt, system_prompt=full_system, model=model)
+            return persona, await client.generate(
+                prompt,
+                system_prompt=full_system,
+                model=model,  # type: ignore[arg-type]
+                cli=cli_name,
+                api_key=config.api_key or None,
+            )
         except Exception as e:
             logger.warning("panel persona %s failed: %s", persona, e)
             return persona, ""
@@ -92,7 +107,16 @@ async def complete_with_panel(
     drafts: list[tuple[str, str]] = await asyncio.gather(*[one(p) for p in personas])
     non_empty = [(name, text) for name, text in drafts if text.strip()]
     if not non_empty:
-        raise ValueError("Every panel persona failed; see server logs")
+        logger.warning(
+            "Every panel persona failed (likely rate-limited); falling back to single-call complete()"
+        )
+        return await complete(
+            prompt,
+            system_prompt=system_prompt,
+            config=config,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
     if len(non_empty) == 1:
         # Only one survived — skip the merge call, nothing to synthesize.
         return non_empty[0][1]
@@ -108,4 +132,14 @@ async def complete_with_panel(
         merge_prompt_parts.append(f"--- Draft from {name} ---\n{text}\n")
     merge_prompt = "\n".join(merge_prompt_parts) + "\n--- End of drafts ---"
 
-    return await client.generate(merge_prompt, system_prompt=merger, model=model)
+    try:
+        return await client.generate(
+            merge_prompt,
+            system_prompt=merger,
+            model=model,  # type: ignore[arg-type]
+            cli=cli_name,
+            api_key=config.api_key or None,
+        )
+    except Exception as e:
+        logger.warning("Panel merge failed (%s); returning first surviving draft", e)
+        return non_empty[0][1]

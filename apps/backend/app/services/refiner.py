@@ -35,17 +35,139 @@ MAX_JD_LENGTH = 2000
 MIN_TRUNCATION_WARNING_LENGTH = 1500
 
 
+_SYNONYM_MAP: dict[str, list[str]] = {
+    # --- Software / DevOps ---
+    "javascript": ["js", "ecmascript"],
+    "typescript": ["ts"],
+    "python": ["py"],
+    "postgresql": ["postgres", "psql"],
+    "mongodb": ["mongo"],
+    "kubernetes": ["k8s"],
+    "ci/cd": ["cicd", "ci cd", "continuous integration", "continuous deployment"],
+    "continuous integration": ["ci"],
+    "continuous deployment": ["cd"],
+    "amazon web services": ["aws"],
+    "google cloud platform": ["gcp", "google cloud"],
+    "microsoft azure": ["azure"],
+    "react": ["reactjs", "react.js"],
+    "node.js": ["nodejs", "node"],
+    "vue.js": ["vuejs", "vue"],
+    "next.js": ["nextjs", "next"],
+    "docker": ["containerization", "containers"],
+    "rest api": ["restful", "rest apis", "restful api"],
+    "graphql": ["graph ql"],
+    "sql": ["structured query language"],
+    "nosql": ["no-sql"],
+    "trpc": ["t-rpc"],
+    "large language models": ["llms", "llm"],
+    "software development life cycle": ["sdlc"],
+    "object oriented programming": ["oop"],
+    "application programming interface": ["api", "apis"],
+    "user interface": ["ui"],
+    "user experience": ["ux"],
+    "ui/ux": ["ui ux", "ux/ui", "ux ui"],
+    # --- Data & Analytics ---
+    "machine learning": ["ml"],
+    "artificial intelligence": ["ai"],
+    "natural language processing": ["nlp"],
+    "extract transform load": ["etl"],
+    "data visualization": ["data viz"],
+    "business intelligence": ["bi"],
+    "power bi": ["powerbi"],
+    "tableau": ["tableau desktop", "tableau server"],
+    "key performance indicators": ["kpi", "kpis"],
+    "return on investment": ["roi"],
+    "data analysis": ["data analytics"],
+    "statistical analysis": ["statistics", "statistical modeling"],
+    # --- Project & Process ---
+    "project management": ["pm", "project mgmt"],
+    "program management": ["pgm", "program mgmt"],
+    "agile": ["scrum", "kanban", "agile methodology"],
+    "waterfall": ["waterfall methodology"],
+    "project management professional": ["pmp"],
+    "objectives and key results": ["okr", "okrs"],
+    "service level agreement": ["sla", "slas"],
+    # --- Finance & Business ---
+    "profit and loss": ["p&l", "pnl"],
+    "financial planning and analysis": ["fp&a", "fpa"],
+    "generally accepted accounting principles": ["gaap"],
+    "international financial reporting standards": ["ifrs"],
+    "enterprise resource planning": ["erp"],
+    "customer relationship management": ["crm"],
+    "supply chain management": ["scm"],
+    "mergers and acquisitions": ["m&a"],
+    "due diligence": ["dd"],
+    "year over year": ["yoy", "y/y"],
+    "quarter over quarter": ["qoq", "q/q"],
+    "compound annual growth rate": ["cagr"],
+    # --- Marketing & Sales ---
+    "search engine optimization": ["seo"],
+    "search engine marketing": ["sem"],
+    "pay per click": ["ppc"],
+    "cost per acquisition": ["cpa"],
+    "cost per click": ["cpc"],
+    "click through rate": ["ctr"],
+    "customer acquisition cost": ["cac"],
+    "lifetime value": ["ltv", "clv"],
+    "content management system": ["cms"],
+    "social media marketing": ["smm"],
+    # --- HR & Operations ---
+    "human resources": ["hr"],
+    "human resources information system": ["hris"],
+    "applicant tracking system": ["ats"],
+    "diversity equity and inclusion": ["dei", "de&i"],
+    "employee resource group": ["erg", "ergs"],
+    "full time equivalent": ["fte", "ftes"],
+    "standard operating procedure": ["sop", "sops"],
+    "quality assurance": ["qa"],
+    "quality control": ["qc"],
+    # --- Certifications & Frameworks ---
+    "certified public accountant": ["cpa certified"],
+    "chartered financial analyst": ["cfa"],
+    "six sigma": ["6σ", "6 sigma"],
+    "information technology infrastructure library": ["itil"],
+}
+
+_REVERSE_SYNONYM_MAP: dict[str, str] = {}
+for _canonical, _aliases in _SYNONYM_MAP.items():
+    for _alias in _aliases:
+        _REVERSE_SYNONYM_MAP[_alias.lower()] = _canonical
+    _REVERSE_SYNONYM_MAP[_canonical.lower()] = _canonical
+
+
 def _keyword_in_text(keyword: str, text: str) -> bool:
-    """Check if keyword exists as a whole term in text.
+    """Check if keyword or any of its synonyms exists as a whole term in text.
 
     SVC-010: Uses term boundaries instead of substring matching to avoid
     false positives like 'python' matching 'pythonic' or 'go' matching 'going'.
+    Also checks synonym variants so 'PostgreSQL' matches 'Postgres' etc.
     """
-    escaped = re.escape(keyword.strip().lower())
-    if not escaped:
+    kw_lower = keyword.strip().lower()
+    text_lower = text.lower()
+    if not kw_lower:
         return False
+
+    # Check exact match first
+    escaped = re.escape(kw_lower)
     pattern = rf"(?<!\w){escaped}(?!\w)"
-    return bool(re.search(pattern, text.lower()))
+    if re.search(pattern, text_lower):
+        return True
+
+    # Check synonyms: gather all variant forms for this keyword
+    variants: list[str] = []
+    if kw_lower in _SYNONYM_MAP:
+        variants.extend(_SYNONYM_MAP[kw_lower])
+    if kw_lower in _REVERSE_SYNONYM_MAP:
+        canonical = _REVERSE_SYNONYM_MAP[kw_lower]
+        variants.append(canonical)
+        variants.extend(a for a in _SYNONYM_MAP.get(canonical, []) if a != kw_lower)
+
+    for variant in variants:
+        escaped_v = re.escape(variant.lower())
+        if re.search(rf"(?<!\w){escaped_v}(?!\w)", text_lower):
+            return True
+
+    return False
 
 
 def _normalize_skill_key(skill: str) -> str:
@@ -56,20 +178,20 @@ def _normalize_skill_key(skill: str) -> str:
 def _extract_jd_skill_keys(
     job_keywords: dict[str, Any],
     job_description: str,
+    confirmed_skills: list[str] | None = None,
 ) -> set[str]:
-    """Extract normalized required/preferred skills present in the raw JD."""
+    """Extract normalized required/preferred/confirmed skills."""
     keys: set[str] = set()
     for field in ("required_skills", "preferred_skills"):
         values = job_keywords.get(field, [])
         if not isinstance(values, list):
             continue
         for value in values:
-            if (
-                isinstance(value, str)
-                and value.strip()
-                and _keyword_in_text(value, job_description)
-            ):
+            if isinstance(value, str) and value.strip():
                 keys.add(_normalize_skill_key(value))
+    for skill in confirmed_skills or []:
+        if isinstance(skill, str) and skill.strip():
+            keys.add(_normalize_skill_key(skill))
     return keys
 
 
@@ -79,6 +201,7 @@ async def refine_resume(
     job_description: str,
     job_keywords: dict[str, Any],
     config: RefinementConfig | None = None,
+    confirmed_skills: list[str] | None = None,
 ) -> RefinementResult:
     """Multi-pass refinement of an initially tailored resume.
 
@@ -101,12 +224,14 @@ async def refine_resume(
     keyword_analysis: KeywordGapAnalysis | None = None
     alignment: AlignmentReport | None = None
 
-    # Pass 1: Keyword injection (if enabled)
+    # Pass 1: Keyword injection (single pass — multiple passes risk unnatural phrasing)
     if config.enable_keyword_injection:
         keyword_analysis = analyze_keyword_gaps(job_keywords, current, master_resume)
-        if keyword_analysis.injectable_keywords:
+        if not keyword_analysis.injectable_keywords:
+            logger.info("No injectable keywords found, skipping injection")
+        else:
             logger.info(
-                "Injecting %d keywords: %s",
+                "Keyword injection: injecting %d keywords: %s",
                 len(keyword_analysis.injectable_keywords),
                 keyword_analysis.injectable_keywords,
             )
@@ -138,6 +263,7 @@ async def refine_resume(
             allowed_new_skills=_extract_jd_skill_keys(
                 job_keywords,
                 job_description,
+                confirmed_skills=confirmed_skills,
             ),
         )
         if not alignment.is_aligned:
@@ -230,6 +356,51 @@ def analyze_keyword_gaps(
     )
 
 
+# Technical camelCase/mixedCase identifiers that legitimately start with a lowercase letter
+_CAMEL_CASE_START_RE = re.compile(r"^[a-z]+[A-Z0-9]")
+_LEADING_HTML_TAG_RE = re.compile(r"^(\s*(?:<[^>]+>\s*)*)")
+_LEADING_JUNK_RE = re.compile(r"^[\s,;:\-–—•*]+")
+
+
+def clean_and_capitalize_bullet(text: str) -> str:
+    """Clean punctuation artifacts and ensure the first letter of a bullet is capitalized.
+
+    Preserves leading HTML tags (e.g. ``<strong>``) and intentional camelCase
+    technical identifiers (e.g. ``iOS``, ``eBay``, ``macOS``, ``k8s``, ``gRPC``).
+    """
+    if not text or not isinstance(text, str):
+        return text
+
+    # Collapse multiple spaces and clean spacing around punctuation
+    cleaned = re.sub(r" {2,}", " ", text).strip()
+    cleaned = re.sub(r"\s+([,.;:!?])", r"\1", cleaned)
+    cleaned = re.sub(r",\s*,+", ",", cleaned)
+
+    # Separate any leading HTML tags so we clean and capitalize the actual text
+    tag_match = _LEADING_HTML_TAG_RE.match(cleaned)
+    leading_tags = tag_match.group(1) if tag_match else ""
+    body = cleaned[len(leading_tags):]
+
+    # Strip leftover leading punctuation/spaces (e.g. ", built..." after filler removal)
+    body = _LEADING_JUNK_RE.sub("", body)
+    if not body:
+        return cleaned
+
+    # Check if the first token is an intentional camelCase identifier (e.g., iOS, eBay, gRPC)
+    first_word = body.split()[0] if body.split() else ""
+    if _CAMEL_CASE_START_RE.match(first_word):
+        return f"{leading_tags}{body}"
+
+    # Capitalize the first alphabetical character if it is lowercase
+    for idx, ch in enumerate(body):
+        if ch.isalpha():
+            if ch.islower():
+                body = body[:idx] + ch.upper() + body[idx + 1 :]
+            break
+
+    return f"{leading_tags}{body}"
+
+
 def remove_ai_phrases(
     data: dict[str, Any],
     job_description: str = "",
@@ -237,7 +408,8 @@ def remove_ai_phrases(
     """Remove AI-generated phrases from resume content.
 
     This is a local operation that doesn't require an LLM call.
-    It performs case-insensitive replacement of blacklisted phrases.
+    It performs case-insensitive replacement of blacklisted phrases,
+    preserving capitalization at the start of sentences/bullets.
     Phrases that appear in the job description are protected from removal.
 
     Args:
@@ -260,27 +432,64 @@ def remove_ai_phrases(
     # Use a set to avoid duplicate tracking
     removed: set[str] = set()
 
-    def clean_text(text: str) -> str:
+    # Sort longest phrases first so e.g. "paradigm shift" and "proactively"
+    # match before "paradigm" and "proactive".
+    sorted_phrases = sorted(AI_PHRASE_BLACKLIST, key=len, reverse=True)
+
+    def _build_phrase_pattern(phrase: str) -> re.Pattern[str]:
+        escaped = re.escape(phrase)
+        # Use word boundaries when the phrase starts/ends with word characters
+        prefix = r"\b" if phrase[0].isalnum() else ""
+        suffix = r"\b" if phrase[-1].isalnum() else ""
+        return re.compile(f"{prefix}{escaped}{suffix}", re.IGNORECASE)
+
+    phrase_patterns: list[tuple[str, re.Pattern[str], str]] = [
+        (
+            phrase,
+            _build_phrase_pattern(phrase),
+            AI_PHRASE_REPLACEMENTS.get(phrase.lower(), ""),
+        )
+        for phrase in sorted_phrases
+        if phrase.lower() not in jd_protected
+    ]
+
+    def clean_text(text: str, *, is_sentence_field: bool = False) -> str:
         cleaned = text
-        for phrase in AI_PHRASE_BLACKLIST:
-            # Skip phrases that appear in the job description
-            if phrase.lower() in jd_protected:
+        for phrase, pattern, replacement in phrase_patterns:
+            if not pattern.search(cleaned):
                 continue
-            if phrase.lower() in cleaned.lower():
-                removed.add(phrase)
-                replacement = AI_PHRASE_REPLACEMENTS.get(phrase.lower(), "")
-                # Case-insensitive replacement
-                pattern = re.compile(re.escape(phrase), re.IGNORECASE)
-                cleaned = pattern.sub(replacement, cleaned)
+            removed.add(phrase)
+
+            def _replace_match(
+                match: re.Match[str], repl: str = replacement
+            ) -> str:
+                matched_text = match.group(0)
+                if not repl:
+                    return ""
+                # Preserve capitalization if the original word was capitalized
+                if matched_text and matched_text[0].isupper() and repl[0].isalpha():
+                    return repl[0].upper() + repl[1:]
+                return repl
+
+            cleaned = pattern.sub(_replace_match, cleaned)
+
+        if is_sentence_field:
+            cleaned = clean_and_capitalize_bullet(cleaned)
+        else:
+            cleaned = re.sub(r" {2,}", " ", cleaned).strip()
         return cleaned
 
-    def clean_recursive(obj: Any) -> Any:
+    sentence_list_keys = {"description", "strings"}
+    sentence_str_keys = {"summary", "text"}
+
+    def clean_recursive(obj: Any, parent_key: str = "") -> Any:
         if isinstance(obj, str):
-            return clean_text(obj)
+            is_sentence = parent_key in sentence_list_keys or parent_key in sentence_str_keys
+            return clean_text(obj, is_sentence_field=is_sentence)
         elif isinstance(obj, list):
-            return [clean_recursive(item) for item in obj]
+            return [clean_recursive(item, parent_key=parent_key) for item in obj]
         elif isinstance(obj, dict):
-            return {k: clean_recursive(v) for k, v in obj.items()}
+            return {k: clean_recursive(v, parent_key=k) for k, v in obj.items()}
         return obj
 
     cleaned_data = clean_recursive(data)
@@ -641,6 +850,50 @@ def fix_alignment_violations(
     return fixed
 
 
+def strip_hidden_sections(data: dict[str, Any]) -> dict[str, Any]:
+    """Return a copy of resume data with hidden sections' content cleared.
+
+    Reads ``sectionMeta`` to decide visibility. Sections whose
+    ``isVisible`` is ``False`` have their content emptied so that
+    scoring functions (review LLM, keyword match) only evaluate what
+    the user actually sees in the rendered resume.
+    """
+    section_meta = data.get("sectionMeta", {})
+    if not isinstance(section_meta, dict) or not section_meta:
+        return data
+
+    filtered = copy.deepcopy(data)
+
+    section_to_field: dict[str, str | list[str]] = {
+        "summary": "summary",
+        "workExperience": "workExperience",
+        "education": "education",
+        "personalProjects": "personalProjects",
+        "additional": "additional",
+    }
+
+    for section_key, field in section_to_field.items():
+        meta = section_meta.get(section_key, {})
+        if isinstance(meta, dict) and meta.get("isVisible") is False:
+            if isinstance(field, str):
+                if isinstance(filtered.get(field), str):
+                    filtered[field] = ""
+                elif isinstance(filtered.get(field), list):
+                    filtered[field] = []
+                elif isinstance(filtered.get(field), dict):
+                    filtered[field] = {}
+
+    # Also handle customSections
+    custom_sections = filtered.get("customSections", {})
+    if isinstance(custom_sections, dict):
+        for cs_key in list(custom_sections.keys()):
+            meta = section_meta.get(cs_key, {})
+            if isinstance(meta, dict) and meta.get("isVisible") is False:
+                custom_sections[cs_key] = {}
+
+    return filtered
+
+
 def calculate_keyword_match(
     resume: dict[str, Any],
     jd_keywords: dict[str, Any],
@@ -654,21 +907,43 @@ def calculate_keyword_match(
     Returns:
         Match percentage (0.0 to 100.0)
     """
-    resume_text = _extract_all_text(resume).lower()
+    resume_text = _extract_all_text(strip_hidden_sections(resume)).lower()
 
-    all_keywords: set[str] = set()
-    all_keywords.update(jd_keywords.get("required_skills", []))
-    all_keywords.update(jd_keywords.get("preferred_skills", []))
-    all_keywords.update(jd_keywords.get("keywords", []))
+    # Weighted scoring: required skills matter most, then preferred, then general
+    _WEIGHT_REQUIRED = 3.0
+    _WEIGHT_PREFERRED = 2.0
+    _WEIGHT_GENERAL = 1.0
+
+    required = jd_keywords.get("required_skills", [])
+    preferred = jd_keywords.get("preferred_skills", [])
+    general = jd_keywords.get("keywords", [])
+
+    weighted_items: list[tuple[str, float]] = []
+    seen: set[str] = set()
+    for kw in required:
+        k = kw.strip().lower() if isinstance(kw, str) else ""
+        if k and k not in seen:
+            seen.add(k)
+            weighted_items.append((kw, _WEIGHT_REQUIRED))
+    for kw in preferred:
+        k = kw.strip().lower() if isinstance(kw, str) else ""
+        if k and k not in seen:
+            seen.add(k)
+            weighted_items.append((kw, _WEIGHT_PREFERRED))
+    for kw in general:
+        k = kw.strip().lower() if isinstance(kw, str) else ""
+        if k and k not in seen:
+            seen.add(k)
+            weighted_items.append((kw, _WEIGHT_GENERAL))
 
     # SVC-009: Return 0% if no keywords (not 100% - that's misleading)
-    if not all_keywords:
+    if not weighted_items:
         logger.warning("No keywords found in job description")
         return 0.0
 
-    # SVC-010: Use word boundary matching instead of substring
-    matched = sum(1 for kw in all_keywords if _keyword_in_text(kw, resume_text))
-    return (matched / len(all_keywords)) * 100
+    total_weight = sum(w for _, w in weighted_items)
+    matched_weight = sum(w for kw, w in weighted_items if _keyword_in_text(kw, resume_text))
+    return (matched_weight / total_weight) * 100
 
 
 def _extract_all_text(data: dict[str, Any]) -> str:
@@ -768,6 +1043,14 @@ def _extract_all_text_cached(data_json: str) -> str:
                 items = section.get("strings", [])
                 if isinstance(items, list):
                     parts.extend(str(i) for i in items)
+            elif section_type == "groupedList":
+                for block in section.get("blocks", []) or []:
+                    if isinstance(block, dict):
+                        if block.get("label"):
+                            parts.append(str(block["label"]))
+                        b_items = block.get("items", [])
+                        if isinstance(b_items, list):
+                            parts.extend(str(i) for i in b_items)
 
     return " ".join(p for p in parts if p)
 

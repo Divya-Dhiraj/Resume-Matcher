@@ -139,12 +139,13 @@ KEYWORD_INJECTION_PROMPT = """Inject the following keywords into this resume by 
 
 CRITICAL RULES:
 1. Reframe existing experience using JD keywords — use adjacent extrapolation to connect the candidate's work ecosystem to JD terminology
-2. Add JD keywords to the skills section when the candidate's experience is adjacent to that domain
-3. Rephrase bullet points to include keywords. You may add new phrasing that surfaces the broader ecosystem of what the candidate did.
-4. Maintain the exact same JSON structure
-5. Do not use em-dashes or their variants
-6. Make keyword incorporation the DEFAULT across all content sections, not an optional enhancement
-7. Preserve descriptionStyles arrays and keep them aligned one-to-one with description arrays
+2. COMPANY & TECH-STACK PLAUSIBILITY: Before adding any vendor-specific tool or cloud platform to a `workExperience` entry, check if that company actually uses it! NEVER add Microsoft Azure, GCP, or Power BI to Amazon work experience (Amazon uses AWS S3, Redshift, Glue, QuickSight). Never claim a past employer in e-commerce or unrelated manufacturing built the hiring company's specific hardware. Place vendor-specific JD tools that don't fit a past employer's stack into `additional.technicalSkills` (and `customSections` grouped skill blocks if present) and `summary`, and use transferable methodology/competency keywords in the `workExperience` bullets.
+3. KEEP SKILLS SECTION WITHIN OPTIMAL LIMITS (NO KEYWORD DUMPING): Only add concrete technical tools, languages, platforms, and core methodologies to `additional.technicalSkills` / `customSections` skill blocks (keep each category concise, max 6-8 items per category). If `additional.technicalSkills` uses `"Category: item1, item2"` lines, merge any added tool into the appropriate category line rather than appending dozens of loose standalone strings. Weave industry domains (e.g., IoT, 5G, Semiconductor, Supply Chain), soft skills, and business contexts into `summary` and `workExperience` bullets instead of dumping them into the skills section.
+4. Rephrase bullet points to include keywords naturally without verbatim copying entire JD sentences.
+5. Maintain the exact same JSON structure
+6. Do not use em-dashes or their variants
+7. Make keyword incorporation the DEFAULT across all content sections, not an optional enhancement
+8. Preserve descriptionStyles arrays and keep them aligned one-to-one with description arrays
 
 Keywords to inject:
 {keywords_to_inject}

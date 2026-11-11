@@ -34,6 +34,8 @@ import {
   fetchSystemPrompts,
   updateSystemPrompt,
   type SystemPromptsMap,
+  fetchFallbackModel,
+  updateFallbackModel,
 } from '@/lib/api/config';
 import { API_URL } from '@/lib/api/client';
 import { getVersionString } from '@/lib/config/version';
@@ -86,6 +88,7 @@ const PROVIDERS: LLMProvider[] = [
   'groq',
   'ollama',
   'claude_code_cli',
+  'gemini_cli',
 ];
 
 const SEGMENTED_BUTTON_BASE =
@@ -139,6 +142,13 @@ export default function SettingsPage() {
   // claude_code_cli: how many reviewer personas run per generation.
   // "light" = 1 call (fast, cheap), "mini" = 3 parallel, "full" = 7 parallel.
   const [panelDepth, setPanelDepth] = useState<PanelDepth>('light');
+
+  // Fallback model state
+  const [fbProvider, setFbProvider] = useState('');
+  const [fbModel, setFbModel] = useState('');
+  const [fbApiBase, setFbApiBase] = useState('');
+  const [fbSaving, setFbSaving] = useState(false);
+  const [fbSaved, setFbSaved] = useState(false);
 
   // Use cached system status (loaded on app start, refreshes every 30 min)
   const {
@@ -298,15 +308,23 @@ export default function SettingsPage() {
 
     async function loadConfig() {
       try {
-        const [llmConfig, featureConfig, promptConfig, featurePrompts, keyStatus, sysPrompts] =
-          await Promise.all([
-            fetchLlmConfig().catch(() => null),
-            fetchFeatureConfig().catch(() => null),
-            fetchPromptConfig().catch(() => null),
-            fetchFeaturePrompts().catch(() => null),
-            fetchApiKeyStatus().catch(() => null),
-            fetchSystemPrompts().catch(() => ({})),
-          ]);
+        const [
+          llmConfig,
+          featureConfig,
+          promptConfig,
+          featurePrompts,
+          keyStatus,
+          sysPrompts,
+          fbConfig,
+        ] = await Promise.all([
+          fetchLlmConfig().catch(() => null),
+          fetchFeatureConfig().catch(() => null),
+          fetchPromptConfig().catch(() => null),
+          fetchFeaturePrompts().catch(() => null),
+          fetchApiKeyStatus().catch(() => null),
+          fetchSystemPrompts().catch(() => ({})),
+          fetchFallbackModel().catch(() => null),
+        ]);
 
         if (cancelled) return;
 
@@ -354,6 +372,12 @@ export default function SettingsPage() {
 
         if (sysPrompts && typeof sysPrompts === 'object') {
           setSystemPrompts(sysPrompts as SystemPromptsMap);
+        }
+
+        if (fbConfig) {
+          setFbProvider(fbConfig.fallback_provider || '');
+          setFbModel(fbConfig.fallback_model || '');
+          setFbApiBase(fbConfig.fallback_api_base || '');
         }
 
         setStatus('idle');
@@ -925,17 +949,25 @@ export default function SettingsPage() {
               <div className="space-y-2">
                 <Label>{t('settings.providerLabel')}</Label>
                 <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-                  {PROVIDERS.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => handleProviderChange(p)}
-                      className={`px-3 py-2 text-xs uppercase ${SEGMENTED_BUTTON_BASE} ${
-                        provider === p ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE
-                      }`}
-                    >
-                      {PROVIDER_INFO[p].name.split(' ')[0]}
-                    </button>
-                  ))}
+                  {PROVIDERS.map((p) => {
+                    const buttonLabel =
+                      p === 'claude_code_cli'
+                        ? 'Claude CLI'
+                        : p === 'gemini_cli'
+                          ? 'Gemini CLI'
+                          : PROVIDER_INFO[p].name.split(' ')[0];
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => handleProviderChange(p)}
+                        className={`px-3 py-2 text-xs uppercase ${SEGMENTED_BUTTON_BASE} ${
+                          provider === p ? SEGMENTED_BUTTON_ACTIVE : SEGMENTED_BUTTON_INACTIVE
+                        }`}
+                      >
+                        {buttonLabel}
+                      </button>
+                    );
+                  })}
                 </div>
                 <p className="text-xs text-steel-grey font-mono">
                   {t('settings.llmConfiguration.selectedProvider', {
@@ -953,6 +985,47 @@ export default function SettingsPage() {
                       { value: 'sonnet', label: 'Sonnet', desc: 'Recommended — fast & capable' },
                       { value: 'opus', label: 'Opus', desc: 'Most capable — deeper analysis' },
                       { value: 'haiku', label: 'Haiku', desc: 'Fastest & cheapest' },
+                    ].map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setModel(opt.value)}
+                        className={`flex items-center gap-3 border px-4 py-3 text-left font-mono text-sm transition-colors ${
+                          model === opt.value
+                            ? 'border-black bg-black text-white shadow-sw-xs'
+                            : 'border-black bg-white hover:bg-paper-tint'
+                        }`}
+                      >
+                        <span className="font-bold">{opt.label}</span>
+                        <span className={model === opt.value ? 'text-white/70' : 'text-steel-grey'}>
+                          {opt.desc}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : provider === 'gemini_cli' ? (
+                  <div className="flex flex-col gap-2">
+                    {[
+                      {
+                        value: 'gemini-3.5-flash',
+                        label: 'Gemini 3.5 Flash (Thinking)',
+                        desc: 'Default — Fast thinking model (works on Free Tier)',
+                      },
+                      {
+                        value: 'gemini-3.1-flash-lite',
+                        label: 'Gemini 3.1 Flash Lite',
+                        desc: 'Fastest & lightest model (works on Free Tier)',
+                      },
+                      {
+                        value: 'gemini-3.1-pro-preview',
+                        label: 'Gemini 3.1 Pro (Thinking)',
+                        desc: 'Latest Pro thinking model (requires Tier 1 / billing)',
+                      },
+                      {
+                        value: 'auto',
+                        label: 'Auto (Pro + Flash)',
+                        desc: 'Let Gemini CLI choose the best model automatically',
+                      },
                     ].map((opt) => (
                       <button
                         key={opt.value}
@@ -1099,10 +1172,10 @@ export default function SettingsPage() {
                 </p>
               </div>
 
-              {/* Panel Depth — only meaningful for the Claude Code CLI provider,
+              {/* Panel Depth — meaningful for the Claude CLI and Gemini CLI providers,
                   where multiple reviewer personas can run in parallel on every
                   generation. The other providers ignore it. */}
-              {provider === 'claude_code_cli' && (
+              {(provider === 'claude_code_cli' || provider === 'gemini_cli') && (
                 <div className="space-y-2">
                   <Dropdown
                     label="Hiring-panel depth"
@@ -1130,8 +1203,8 @@ export default function SettingsPage() {
                     ]}
                   />
                   <p className="text-xs text-steel-grey font-mono">
-                    Only affects the Claude Code CLI provider. Each extra persona adds one parallel
-                    call, multiplying your Claude subscription usage.
+                    Applies to Claude CLI and Gemini CLI providers. Each extra persona adds one
+                    parallel call.
                   </p>
                 </div>
               )}
@@ -1577,6 +1650,88 @@ export default function SettingsPage() {
               </div>
             </section>
           )}
+
+          {/* Fallback / Light Model */}
+          <section className="space-y-6">
+            <div className="flex items-center gap-2 border-b border-black pb-2">
+              <h2 className="font-mono text-sm font-bold uppercase tracking-wider">
+                Fallback / Light Model
+              </h2>
+            </div>
+            <p className="text-xs text-ink-soft">
+              Optional secondary model for cheap tasks (keyword extraction, skill planning) and
+              automatic fallback when the primary model hits rate limits or quota errors.
+            </p>
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="font-mono text-xs uppercase text-ink-soft">Provider</label>
+                <select
+                  value={fbProvider}
+                  onChange={(e) => setFbProvider(e.target.value)}
+                  className="w-full border border-black bg-white px-3 py-2 font-mono text-sm rounded-none"
+                >
+                  <option value="">None (disabled)</option>
+                  {PROVIDERS.map((p) => (
+                    <option key={p} value={p}>
+                      {PROVIDER_INFO[p]?.name || p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="font-mono text-xs uppercase text-ink-soft">Model</label>
+                <input
+                  type="text"
+                  value={fbModel}
+                  onChange={(e) => setFbModel(e.target.value)}
+                  placeholder={
+                    fbProvider
+                      ? PROVIDER_INFO[fbProvider as LLMProvider]?.defaultModel || 'model-name'
+                      : 'Select provider first'
+                  }
+                  className="w-full border border-black bg-white px-3 py-2 font-mono text-sm rounded-none"
+                />
+              </div>
+              {fbProvider && PROVIDER_INFO[fbProvider as LLMProvider]?.requiresBaseUrl && (
+                <div className="space-y-2 md:col-span-2">
+                  <label className="font-mono text-xs uppercase text-ink-soft">Base URL</label>
+                  <input
+                    type="text"
+                    value={fbApiBase}
+                    onChange={(e) => setFbApiBase(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full border border-black bg-white px-3 py-2 font-mono text-sm rounded-none"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={async () => {
+                  setFbSaving(true);
+                  setFbSaved(false);
+                  try {
+                    await updateFallbackModel({
+                      fallback_provider: fbProvider,
+                      fallback_model: fbModel,
+                      fallback_api_base: fbApiBase,
+                    });
+                    setFbSaved(true);
+                    setTimeout(() => setFbSaved(false), 3000);
+                  } catch {
+                    setError('Failed to save fallback model config');
+                  } finally {
+                    setFbSaving(false);
+                  }
+                }}
+                disabled={fbSaving}
+                className="text-xs"
+              >
+                {fbSaving ? 'Saving...' : 'Save Fallback Model'}
+              </Button>
+              {fbSaved && <span className="font-mono text-xs text-success">Saved</span>}
+            </div>
+          </section>
 
           {/* Danger Zone */}
           <section className="space-y-6">

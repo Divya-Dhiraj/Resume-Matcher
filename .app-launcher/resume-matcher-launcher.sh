@@ -135,14 +135,21 @@ except Exception:
       docker compose build >> "$LAUNCH_LOG" 2>&1 || { log "build failed"; echo "ERR: docker compose build failed (see log)"; exit 1; }
     fi
 
-    # Claude bridge (host-side shim so the backend can reach the user's
-    # `claude` CLI from inside the Docker container). Skipped silently if
-    # Python 3 or FastAPI aren't available — the main app still works with
-    # the other providers; only the Claude Code CLI option needs this.
+    # Claude & Gemini CLI bridge (host-side shim so the backend can reach the user's
+    # `claude` and `gemini` CLIs from inside the Docker container). Prefer the
+    # backend's .venv python (which always has fastapi + uvicorn installed),
+    # falling back to system python3.
     if ! curl -sf "http://127.0.0.1:${BRIDGE_PORT}/health" >/dev/null 2>&1; then
-      if command -v python3 >/dev/null 2>&1 && python3 -c "import fastapi, uvicorn" 2>/dev/null; then
-        log "starting Claude bridge on 127.0.0.1:${BRIDGE_PORT}"
-        nohup python3 "$BRIDGE_SCRIPT" >> "$BRIDGE_LOG" 2>&1 &
+      BRIDGE_PY=""
+      if [ -x "$REPO/apps/backend/.venv/bin/python" ] && "$REPO/apps/backend/.venv/bin/python" -c "import fastapi, uvicorn" 2>/dev/null; then
+        BRIDGE_PY="$REPO/apps/backend/.venv/bin/python"
+      elif command -v python3 >/dev/null 2>&1 && python3 -c "import fastapi, uvicorn" 2>/dev/null; then
+        BRIDGE_PY="python3"
+      fi
+      if [ -n "$BRIDGE_PY" ]; then
+        log "starting CLI bridge on 127.0.0.1:${BRIDGE_PORT} using $BRIDGE_PY"
+        export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+        nohup "$BRIDGE_PY" "$BRIDGE_SCRIPT" >> "$BRIDGE_LOG" 2>&1 &
         echo $! > "$BRIDGE_PID_FILE"
         for i in $(seq 1 10); do
           curl -sf "http://127.0.0.1:${BRIDGE_PORT}/health" >/dev/null 2>&1 && { log "bridge up after ${i}s"; break; }
@@ -152,7 +159,7 @@ except Exception:
         log "skipping bridge: python3 + fastapi + uvicorn not available (pip install fastapi uvicorn to enable)"
       fi
     else
-      log "Claude bridge already up"
+      log "CLI bridge already up"
     fi
 
     # Start stack

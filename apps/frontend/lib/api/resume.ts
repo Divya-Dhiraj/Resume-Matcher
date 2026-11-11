@@ -91,6 +91,11 @@ interface ImproveResumeConfirmRequest {
     suggestion: string;
     lineNumber?: number | null;
   }>;
+  cover_letter?: string | null;
+  review?: Record<string, unknown> | null;
+  company?: string;
+  role?: string;
+  status?: string;
 }
 
 function normalizeResumeId(resumeId: string): string {
@@ -130,8 +135,17 @@ async function postImprove(
 
   const text = await response.text();
   if (!response.ok) {
-    console.error('Improve failed response body:', text);
-    throw new Error(`Improve failed with status ${response.status}: ${text}`);
+    let detailMessage = text;
+    try {
+      const parsed = JSON.parse(text) as { detail?: string };
+      if (parsed?.detail) {
+        detailMessage = parsed.detail;
+      }
+    } catch {
+      // Keep raw response text if not JSON
+    }
+    console.warn(`Improve request returned status ${response.status}: ${detailMessage}`);
+    throw new Error(detailMessage || `Improve failed with status ${response.status}`);
   }
 
   try {
@@ -154,6 +168,27 @@ export async function uploadJobDescriptions(
   if (!res.ok) throw new Error(`Upload failed with status ${res.status}`);
   const data = await res.json();
   return data.job_id[0];
+}
+
+export interface ExtractedKeywords {
+  job_id: string;
+  keywords: {
+    required_skills?: string[];
+    preferred_skills?: string[];
+    keywords?: string[];
+    company?: string;
+    role?: string;
+    [key: string]: unknown;
+  };
+  cached: boolean;
+  company?: string;
+  role?: string;
+}
+
+export async function extractJobKeywords(jobId: string): Promise<ExtractedKeywords> {
+  const res = await apiPost(`/jobs/${encodeURIComponent(jobId)}/extract-keywords`, {});
+  if (!res.ok) throw new Error(`Keyword extraction failed (status ${res.status})`);
+  return res.json();
 }
 
 /** Improves the resume and returns the full preview object */
@@ -180,6 +215,7 @@ export async function previewImproveResume(
     outputLanguage?: string;
     includeCoverLetter?: boolean;
     includeReview?: boolean;
+    baseResumeData?: ResumeData;
   }
 ): Promise<ImprovedResult> {
   return postImprove('/resumes/improve/preview', {
@@ -191,6 +227,7 @@ export async function previewImproveResume(
     ...(options?.outputLanguage ? { output_language: options.outputLanguage } : {}),
     ...(options?.includeCoverLetter ? { include_cover_letter: true } : {}),
     ...(options?.includeReview ? { include_review: true } : {}),
+    ...(options?.baseResumeData ? { base_resume_data: options.baseResumeData } : {}),
   });
 }
 
@@ -408,19 +445,34 @@ export async function retryProcessing(resumeId: string): Promise<ResumeUploadRes
   return res.json();
 }
 
-/** Single-pass hiring panel review of a tailored resume against a JD */
-export async function reviewResume(
-  resumeId: string,
-  jobId: string
-): Promise<{
+export interface ResumeReviewResult {
   match_score: number;
   verdict: string;
   missing_keywords: string[];
-  weak_bullets: string[];
+  weak_bullets: Array<{
+    path?: string;
+    text?: string;
+    problem?: string;
+    fix?: string;
+  }>;
   top_3_fixes: string[];
   pass: boolean;
-}> {
-  const res = await apiPost('/resumes/review', { resume_id: resumeId, job_id: jobId });
+  panel_scores?: Record<string, number>;
+  missing_from_resume?: string[];
+  fabrication_flags?: string[];
+}
+
+/** Single-pass hiring panel review of a tailored resume against a JD */
+export async function reviewResume(
+  resumeId: string,
+  jobId: string,
+  force = false
+): Promise<ResumeReviewResult> {
+  const res = await apiPost('/resumes/review', {
+    resume_id: resumeId,
+    job_id: jobId,
+    force,
+  });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Review failed (status ${res.status}): ${text}`);
@@ -451,7 +503,7 @@ export async function autoLoopTailor(
   const res = await apiPost(
     '/resumes/improve/auto-loop',
     { resume_id: resumeId, job_id: jobId, prompt_id: promptId || 'keywords' },
-    { timeout: DEFAULT_TIMEOUT_MS }
+    DEFAULT_TIMEOUT_MS
   );
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -463,7 +515,7 @@ export async function autoLoopTailor(
 /** Fetches the job description used to tailor a resume */
 export async function fetchJobDescription(
   resumeId: string
-): Promise<{ job_id: string; content: string }> {
+): Promise<{ job_id: string; content: string; review?: ResumeReviewResult | null }> {
   const res = await apiFetch(`/resumes/${encodeURIComponent(resumeId)}/job-description`);
   if (!res.ok) {
     const text = await res.text().catch(() => '');

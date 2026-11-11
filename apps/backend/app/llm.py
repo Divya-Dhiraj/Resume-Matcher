@@ -63,6 +63,90 @@ class LLMConfig(BaseModel):
     reasoning_effort: Literal["minimal", "low", "medium", "high"] | None = None
 
 
+# ---------------------------------------------------------------------------
+# Token usage tracking
+# ---------------------------------------------------------------------------
+
+class _UsageTracker:
+    """In-memory token usage tracker. Thread-safe via a lock."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._calls: list[dict[str, Any]] = []
+        self._max_history = 500
+
+    def record(
+        self,
+        *,
+        task: str,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        total_tokens: int,
+    ) -> None:
+        import time
+
+        entry = {
+            "task": task,
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "timestamp": time.time(),
+        }
+        with self._lock:
+            self._calls.append(entry)
+            if len(self._calls) > self._max_history:
+                self._calls = self._calls[-self._max_history :]
+
+    def get_summary(self) -> dict[str, Any]:
+        with self._lock:
+            calls = list(self._calls)
+        total_prompt = sum(c["prompt_tokens"] for c in calls)
+        total_completion = sum(c["completion_tokens"] for c in calls)
+        total_all = sum(c["total_tokens"] for c in calls)
+        by_task: dict[str, dict[str, int]] = {}
+        for c in calls:
+            t = c["task"]
+            if t not in by_task:
+                by_task[t] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0, "calls": 0}
+            by_task[t]["prompt_tokens"] += c["prompt_tokens"]
+            by_task[t]["completion_tokens"] += c["completion_tokens"]
+            by_task[t]["total_tokens"] += c["total_tokens"]
+            by_task[t]["calls"] += 1
+        return {
+            "total_calls": len(calls),
+            "total_prompt_tokens": total_prompt,
+            "total_completion_tokens": total_completion,
+            "total_tokens": total_all,
+            "by_task": by_task,
+            "recent_calls": calls[-20:],
+        }
+
+    def reset(self) -> None:
+        with self._lock:
+            self._calls.clear()
+
+
+usage_tracker = _UsageTracker()
+
+
+def _record_usage(response: Any, task: str, model_name: str) -> None:
+    """Extract usage from a LiteLLM response and record it."""
+    try:
+        usage = getattr(response, "usage", None)
+        if usage:
+            usage_tracker.record(
+                task=task,
+                model=model_name,
+                prompt_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                completion_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                total_tokens=getattr(usage, "total_tokens", 0) or 0,
+            )
+    except Exception:
+        pass
+
+
 def _is_azure_openai_foundry_endpoint(api_base: str | None, model: str | None = None) -> bool:
     """Return True for Azure AI Foundry endpoints exposing Azure OpenAI APIs."""
     if not api_base:
@@ -392,6 +476,7 @@ _PROVIDER_KEY_MAP: dict[str, str] = {
     "azure_foundry": "azure_foundry",
     "anthropic": "anthropic",
     "gemini": "google",
+    "gemini_cli": "google",
     "openrouter": "openrouter",
     "deepseek": "deepseek",
     "groq": "groq",
@@ -404,15 +489,19 @@ _PROVIDER_KEY_MAP: dict[str, str] = {
 # default), because the env var may hold a real paid-API key that would then
 # leak to a local/compatible endpoint the user set up expecting no auth.
 _PROVIDERS_WITHOUT_ENV_KEY_FALLBACK: frozenset[str] = frozenset(
-    {"openai_compatible", "ollama", "claude_code_cli"}
+    {"openai_compatible", "ollama", "claude_code_cli", "gemini_cli"}
 )
 
 
-# Provider that talks to the user's local Claude Code CLI via the host-side
-# bridge (see apps/backend/app/services/claude_bridge_client.py and
-# .app-launcher/claude-bridge.py). This provider bypasses LiteLLM entirely
+# Providers that talk to the user's local Claude Code CLI or Gemini CLI via the
+# host-side bridge (see apps/backend/app/services/claude_bridge_client.py and
+# .app-launcher/claude-bridge.py). These providers bypass LiteLLM entirely
 # — no Router, no api_key, no HTTP to an LLM vendor.
 _CLAUDE_CLI_PROVIDER = "claude_code_cli"
+_GEMINI_CLI_PROVIDER = "gemini_cli"
+_CLI_BRIDGE_PROVIDERS: frozenset[str] = frozenset(
+    {_CLAUDE_CLI_PROVIDER, _GEMINI_CLI_PROVIDER}
+)
 
 
 def _claude_bridge_base_url(config_api_base: str | None) -> str:
@@ -440,6 +529,35 @@ def _claude_model_from_config(model: str) -> str:
     if "haiku" in m:
         return "haiku"
     return "sonnet"
+
+
+def _gemini_cli_model_from_config(model: str) -> str:
+    """Map the config model string to one of the models that `gemini -p -m` accepts."""
+    m = (model or "").strip().lower()
+    if m in (
+        "gemini-3.5-flash",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-pro-preview",
+        "gemini-2.5-pro",
+        "auto",
+    ):
+        return m
+    if m.startswith("gemini-"):
+        return m
+    if "flash-lite" in m or "lite" in m:
+        return "gemini-3.1-flash-lite"
+    if "flash" in m:
+        return "gemini-3.5-flash"
+    if m == "auto":
+        return "auto"
+    return "gemini-3.5-flash"
+
+
+def _bridge_cli_and_model(config: LLMConfig) -> tuple[Literal["claude", "gemini"], str]:
+    """Return (cli_name, normalized_model) for the host CLI bridge."""
+    if config.provider == _GEMINI_CLI_PROVIDER:
+        return "gemini", _gemini_cli_model_from_config(config.model)
+    return "claude", _claude_model_from_config(config.model)
 
 
 def resolve_api_key(stored: dict, provider: str) -> str:
@@ -521,6 +639,51 @@ def get_llm_config() -> LLMConfig:
         api_version=stored.get("api_version"),
         reasoning_effort=reasoning_effort,
     )
+
+
+# Tasks that are cheap enough to route to a lighter model.
+LIGHT_TASKS: set[str] = {"keywords", "skill_plan"}
+
+
+def get_fallback_config() -> LLMConfig | None:
+    """Get fallback/light LLM configuration from config.json.
+
+    Returns None if no fallback model is configured.
+    """
+    stored = load_config_file()
+    fb_provider = stored.get("fallback_provider")
+    fb_model = stored.get("fallback_model")
+    if not fb_provider or not fb_model:
+        return None
+
+    api_key = resolve_api_key(stored, fb_provider)
+    return LLMConfig(
+        provider=fb_provider,
+        model=fb_model,
+        api_key=api_key,
+        api_base=stored.get("fallback_api_base"),
+    )
+
+
+def get_config_for_task(task: str | None = None) -> LLMConfig:
+    """Get the right LLM config for a given task.
+
+    Light tasks (keyword extraction, skill planning) use the fallback model
+    if one is configured.  Everything else uses the primary model.
+    """
+    if task and task in LIGHT_TASKS:
+        fallback = get_fallback_config()
+        if fallback:
+            logging.debug("Routing task %r to fallback model %s/%s", task, fallback.provider, fallback.model)
+            return fallback
+    return get_llm_config()
+
+
+def _is_quota_or_rate_error(exc: Exception) -> bool:
+    """Return True if the exception signals a rate-limit or quota exhaustion."""
+    msg = str(exc).lower()
+    indicators = ("rate_limit", "rate limit", "quota", "429", "insufficient_quota", "exceeded", "billing")
+    return any(ind in msg for ind in indicators)
 
 
 def get_model_name(config: LLMConfig) -> str:
@@ -680,19 +843,25 @@ async def check_llm_health(
     if config is None:
         config = get_llm_config()
 
-    # claude_code_cli: health is "can the host bridge reach the CLI?" — no
+    # claude_code_cli / gemini_cli: health is "can the host bridge reach the CLI?" — no
     # API key needed, LiteLLM entirely bypassed.
-    if config.provider == _CLAUDE_CLI_PROVIDER:
+    if config.provider in _CLI_BRIDGE_PROVIDERS:
         from app.services.claude_bridge_client import ClaudeBridgeClient
 
+        cli_name, _ = _bridge_cli_and_model(config)
         client = ClaudeBridgeClient(_claude_bridge_base_url(config.api_base))
         try:
-            info = await client.health()
+            info = await client.health(cli=cli_name)
+            resp_version = (
+                info.get("gemini_version")
+                if cli_name == "gemini"
+                else info.get("claude_version")
+            ) or info.get("claude_version")
             return {
                 "healthy": True,
                 "provider": config.provider,
                 "model": config.model,
-                "response_model": info.get("claude_version"),
+                "response_model": resp_version,
             }
         except Exception as e:
             return {
@@ -700,7 +869,7 @@ async def check_llm_health(
                 "provider": config.provider,
                 "model": config.model,
                 "error_code": "bridge_unreachable",
-                "message": f"Could not reach Claude Code bridge: {e}",
+                "message": f"Could not reach {cli_name} CLI bridge: {e}",
             }
 
     # Check if API key is configured. Ollama and openai_compatible local
@@ -832,11 +1001,12 @@ async def complete(
     if config is None:
         config = get_llm_config()
 
-    if config.provider == _CLAUDE_CLI_PROVIDER:
-        # claude_code_cli bypasses LiteLLM entirely — go straight to the
+    if config.provider in _CLI_BRIDGE_PROVIDERS:
+        # claude_code_cli / gemini_cli bypass LiteLLM entirely — go straight to the
         # host-side bridge. See services/claude_bridge_client.py.
         from app.services.claude_bridge_client import ClaudeBridgeClient
 
+        cli_name, bridge_model = _bridge_cli_and_model(config)
         client = ClaudeBridgeClient(
             _claude_bridge_base_url(config.api_base),
             timeout_s=_calculate_timeout("completion", max_tokens, config.provider),
@@ -845,11 +1015,13 @@ async def complete(
             return await client.generate(
                 prompt,
                 system_prompt=system_prompt,
-                model=_claude_model_from_config(config.model),
+                model=bridge_model,  # type: ignore[arg-type]
+                cli=cli_name,
+                api_key=config.api_key or None,
             )
         except Exception as e:
-            logging.error(f"Claude bridge completion failed: {e}")
-            raise ValueError(f"Claude Code CLI bridge failed: {e}") from e
+            logging.error(f"{cli_name} bridge completion failed: {e}")
+            raise ValueError(f"{cli_name.capitalize()} CLI bridge failed: {e}") from e
 
     router, config = get_router(config)
     model_name = get_model_name(config)
@@ -872,6 +1044,7 @@ async def complete(
             kwargs["reasoning_effort"] = config.reasoning_effort
 
         response = await router.acompletion(**kwargs)
+        _record_usage(response, "completion", model_name)
 
         content = _extract_choice_text(response.choices[0])
         if not content:
@@ -886,6 +1059,15 @@ async def complete(
         # Log the actual error server-side for debugging
         logging.error(f"LLM completion failed: {e}", extra={
                       "model": model_name})
+        # Fallback: retry once with the fallback model on quota/rate errors
+        fallback = get_fallback_config()
+        if fallback and fallback.model != config.model and _is_quota_or_rate_error(e):
+            logging.warning("Primary model quota/rate error — falling back to %s/%s", fallback.provider, fallback.model)
+            try:
+                return await complete(prompt, system_prompt=system_prompt, config=fallback, max_tokens=max_tokens, temperature=temperature)
+            except Exception as fb_err:
+                logging.error(f"Fallback model also failed: {fb_err}")
+                raise ValueError("LLM completion failed on both primary and fallback models.") from fb_err
         raise ValueError(
             "LLM completion failed. Please check your API configuration and try again."
         ) from e
@@ -1282,12 +1464,13 @@ async def complete_json(
     if config is None:
         config = get_llm_config()
 
-    if config.provider == _CLAUDE_CLI_PROVIDER:
+    if config.provider in _CLI_BRIDGE_PROVIDERS:
         # Bypass Router; reuse the same _extract_json / _appears_truncated
-        # content-quality retry loop so Claude-bridge output is sanitized
+        # content-quality retry loop so CLI-bridge output is sanitized
         # the same way as LiteLLM output.
         from app.services.claude_bridge_client import ClaudeBridgeClient
 
+        cli_name, bridge_model = _bridge_cli_and_model(config)
         json_system = (
             (system_prompt or "")
             + "\n\nYou must respond with valid JSON only. No explanations, no markdown."
@@ -1302,15 +1485,17 @@ async def complete_json(
                 raw = await client.generate(
                     prompt,
                     system_prompt=json_system,
-                    model=_claude_model_from_config(config.model),
+                    model=bridge_model,  # type: ignore[arg-type]
+                    cli=cli_name,
+                    api_key=config.api_key or None,
                 )
                 return json.loads(_extract_json(raw))
             except Exception as e:
                 last_err = e
                 logging.warning(
-                    "claude_code_cli json attempt %d failed: %s", attempt + 1, e
+                    "%s json attempt %d failed: %s", config.provider, attempt + 1, e
                 )
-        raise ValueError(f"Claude Code CLI json completion failed: {last_err}")
+        raise ValueError(f"{cli_name.capitalize()} CLI json completion failed: {last_err}")
 
     router, config = get_router(config)
     model_name = get_model_name(config)
@@ -1369,6 +1554,7 @@ async def complete_json(
                 kwargs["response_format"] = {"type": "json_object"}
 
             response = await router.acompletion(**kwargs)
+            _record_usage(response, f"json_{schema_type}", model_name)
             content = _extract_choice_text(response.choices[0])
 
             if not content:
@@ -1463,10 +1649,18 @@ async def complete_json(
                     continue
             raise
 
-        except Exception:
+        except Exception as e:
             # Transport errors — Router already retried with backoff.
-            # Cooldowns are disabled (see _build_router); no additional
-            # retry is attempted here.
+            # On quota/rate errors, try the fallback model before giving up.
+            if _is_quota_or_rate_error(e):
+                fallback = get_fallback_config()
+                if fallback and fallback.model != config.model:
+                    logging.warning("Primary model quota/rate error in complete_json — falling back to %s/%s", fallback.provider, fallback.model)
+                    try:
+                        return await complete_json(prompt, system_prompt=system_prompt, config=fallback, max_tokens=max_tokens, retries=retries, schema_type=schema_type)
+                    except Exception as fb_err:
+                        logging.error(f"Fallback model also failed: {fb_err}")
+                        raise ValueError("LLM JSON completion failed on both primary and fallback models.") from fb_err
             raise
 
     raise ValueError(f"Failed after {retries + 1} attempts")

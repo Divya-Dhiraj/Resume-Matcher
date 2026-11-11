@@ -147,6 +147,31 @@ async def test_complete_with_panel_mini_runs_three_plus_merge() -> None:
     assert out.startswith("text-")
 
 
+@respx.mock
+async def test_complete_with_panel_gemini_cli_mini_runs_three_plus_merge() -> None:
+    from app.services import panel as panel_mod
+
+    state = {"n": 0}
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        state["n"] += 1
+        return httpx.Response(
+            200,
+            json={"content": f"gemini-text-{state['n']}", "model": "gemini-2.5-pro", "elapsed_ms": 1},
+        )
+
+    respx.post(f"{BRIDGE}/generate").mock(side_effect=_handler)
+
+    with (
+        patch.object(panel_mod, "get_llm_config", return_value=_FakeConfig("gemini_cli", model="gemini-2.5-pro")),
+        patch.object(panel_mod, "_active_panel_depth", return_value="mini"),
+    ):
+        out = await panel_mod.complete_with_panel("the task", system_prompt="sys")
+
+    assert state["n"] == 4
+    assert out.startswith("gemini-text-")
+
+
 async def test_complete_with_panel_non_claude_uses_plain_complete() -> None:
     from app.services import panel as panel_mod
 

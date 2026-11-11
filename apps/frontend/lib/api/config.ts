@@ -11,7 +11,8 @@ export type LLMProvider =
   | 'deepseek'
   | 'groq'
   | 'ollama'
-  | 'claude_code_cli';
+  | 'claude_code_cli'
+  | 'gemini_cli';
 
 export type PanelDepth = 'light' | 'mini' | 'full';
 
@@ -209,8 +210,14 @@ export const PROVIDER_INFO: Record<
     defaultBaseUrl: 'http://localhost:11434',
   },
   claude_code_cli: {
-    name: 'Claude Code CLI (via subscription)',
+    name: 'Claude CLI (via subscription)',
     defaultModel: 'sonnet',
+    requiresKey: false,
+    defaultBaseUrl: 'http://host.docker.internal:11435',
+  },
+  gemini_cli: {
+    name: 'Gemini CLI (Google CLI — Thinking)',
+    defaultModel: 'gemini-3.5-flash',
     requiresKey: false,
     defaultBaseUrl: 'http://host.docker.internal:11435',
   },
@@ -258,7 +265,7 @@ export async function updateFeatureConfig(config: FeatureConfigUpdate): Promise<
 }
 
 // Language configuration types
-export type SupportedLanguage = 'en' | 'es' | 'zh' | 'ja' | 'pt' | 'fr' | 'ko';
+export type SupportedLanguage = 'en' | 'es' | 'zh' | 'ja' | 'pt' | 'fr' | 'ko' | 'de';
 
 export interface LanguageConfig {
   ui_language: SupportedLanguage;
@@ -441,7 +448,7 @@ export type ApiKeyProvider =
 // name. Mirrors the backend `_PROVIDER_KEY_MAP` (gemini → google; the local
 // providers pass through). Keys are persisted under the key-store name.
 export function llmProviderToKeyProvider(provider: LLMProvider): ApiKeyProvider {
-  if (provider === 'gemini') return 'google';
+  if (provider === 'gemini' || provider === 'gemini_cli') return 'google';
   return provider as ApiKeyProvider;
 }
 
@@ -567,6 +574,62 @@ export async function updateSystemPrompt(key: string, value: string): Promise<Sy
   if (!res.ok) throw new Error('Failed to update system prompt');
   const data = await res.json();
   return data.prompts;
+}
+
+// Token usage tracking
+export interface UsageSummary {
+  total_calls: number;
+  total_prompt_tokens: number;
+  total_completion_tokens: number;
+  total_tokens: number;
+  by_task: Record<
+    string,
+    { prompt_tokens: number; completion_tokens: number; total_tokens: number; calls: number }
+  >;
+  recent_calls: Array<{
+    task: string;
+    model: string;
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+    timestamp: number;
+  }>;
+}
+
+export async function fetchUsageSummary(): Promise<UsageSummary> {
+  const res = await apiFetch('/config/usage');
+  if (!res.ok) throw new Error('Failed to fetch usage data');
+  return res.json();
+}
+
+export async function resetUsage(): Promise<void> {
+  const res = await apiFetch('/config/usage/reset', { method: 'POST' });
+  if (!res.ok) throw new Error('Failed to reset usage data');
+}
+
+// Fallback model configuration
+export interface FallbackModelConfig {
+  fallback_provider: string;
+  fallback_model: string;
+  fallback_api_base: string;
+}
+
+export async function fetchFallbackModel(): Promise<FallbackModelConfig> {
+  const res = await apiFetch('/config/fallback-model');
+  if (!res.ok) throw new Error('Failed to fetch fallback model config');
+  return res.json();
+}
+
+export async function updateFallbackModel(
+  config: Partial<FallbackModelConfig>
+): Promise<FallbackModelConfig> {
+  const res = await apiFetch('/config/fallback-model', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
+  });
+  if (!res.ok) throw new Error('Failed to update fallback model');
+  return res.json();
 }
 
 // Reset database

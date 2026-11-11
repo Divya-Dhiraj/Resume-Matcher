@@ -2,17 +2,61 @@
 
 import json
 import logging
+import re
 from typing import Any
 
 from app.config import load_config_file
 from app.llm import complete
 from app.services.panel import complete_with_panel
 from app.prompts.templates import (
+    COVER_LETTER_CRITIQUE_REFINE_PROMPT,
     COVER_LETTER_PROMPT,
     GENERATE_TITLE_PROMPT,
     OUTREACH_MESSAGE_PROMPT,
 )
 from app.prompts import get_language_name
+
+_BAD_OPENING_RE = re.compile(
+    r"^\s*(?:as\s+the\s+global\s+market\s+leader|as\s+a\s+global\s+leader|in\s+today['’]?s\s+fast|in\s+an\s+era\s+where|with\s+the\s+rapid\s+evolution)",
+    re.IGNORECASE,
+)
+
+
+def _needs_storyline_refinement(draft: str) -> bool:
+    """Check whether a cover letter draft needs a second storyline refinement pass."""
+    if not draft or not draft.strip():
+        return False
+    lower = draft.lower()
+    # 1. Check if header has outdated 2024/2025 year
+    if ".2024" in draft or " 2024" in draft[:250]:
+        return True
+    # 2. Check if first body paragraph starts with a robotic corporate summary
+    lines = [line.strip() for line in draft.splitlines() if line.strip()]
+    for idx, line in enumerate(lines):
+        if line.lower().startswith(("dear ", "sehr geehrte")):
+            if idx + 1 < len(lines) and _BAD_OPENING_RE.search(lines[idx + 1]):
+                return True
+            break
+    # 3. Check if closing invites an initial discussion / conversation
+    has_discussion_cta = any(
+        phrase in lower
+        for phrase in (
+            "initial discussion",
+            "initial conversation",
+            "opportunity to discuss",
+            "welcome the opportunity",
+            "love the opportunity",
+            "persönlichen gespräch",
+            "kennenlerngespräch",
+            "ersten austausch",
+        )
+    )
+    if not has_discussion_cta:
+        return True
+    # 4. Check for em-dashes
+    if "—" in draft:
+        return True
+    return False
 
 
 def _resolve_feature_prompt(
@@ -90,7 +134,33 @@ async def generate_cover_letter(
         ),
     )
 
-    return result.strip()
+    draft = result.strip()
+
+    # Closed-loop storyline refinement: if the draft uses a bad corporate-lecture
+    # opening, an outdated 2024 date, em-dashes, or misses the initial-discussion
+    # call to action, run a targeted editorial refinement pass.
+    if not is_custom and _needs_storyline_refinement(draft):
+        try:
+            refine_prompt = COVER_LETTER_CRITIQUE_REFINE_PROMPT.format(
+                job_description=job_description,
+                resume_data=json.dumps(resume_data),
+                draft_cover_letter=draft,
+                output_language=output_language,
+            )
+            refined = await complete(
+                prompt=refine_prompt,
+                system_prompt="You are an executive hiring manager and editorial coach refining a cover letter for storyline, tone, and standard professional structure.",
+                max_tokens=2048,
+                temperature=0.3,
+            )
+            if refined and len(refined.strip()) > 150:
+                draft = refined.strip()
+        except Exception as e:
+            logging.warning("Cover letter storyline refinement pass skipped: %s", e)
+
+    # Final deterministic cleanup: strip any stray em-dashes
+    draft = draft.replace(" — ", ", ").replace("—", ", ")
+    return draft
 
 
 async def generate_outreach_message(

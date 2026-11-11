@@ -31,6 +31,7 @@ import {
 } from '@/lib/api/resume';
 import Star from 'lucide-react/dist/esm/icons/star';
 import { useStatusCache } from '@/lib/context/status-cache';
+import { UsagePanel } from '@/components/dashboard/usage-panel';
 
 type ProcessingStatus = 'pending' | 'processing' | 'ready' | 'failed' | 'loading';
 
@@ -641,6 +642,11 @@ export default function DashboardPage() {
           trigger={<button type="button" className="hidden" tabIndex={-1} aria-hidden="true" />}
         />
       </SwissGrid>
+
+      {/* LLM Usage Panel */}
+      <div className="mt-8">
+        <UsagePanel />
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import Loader2 from 'lucide-react/dist/esm/icons/loader-2';
 import ChevronDown from 'lucide-react/dist/esm/icons/chevron-down';
@@ -26,8 +26,10 @@ import {
   uploadJobDescriptions,
   previewImproveResume,
   confirmImproveResume,
+  extractJobKeywords,
+  type ExtractedKeywords,
 } from '@/lib/api/resume';
-import { createApplication, updateApplication, type ApplicationStatus } from '@/lib/api/tracker';
+import { createApplication, type ApplicationStatus } from '@/lib/api/tracker';
 import type { ResumeData } from '@/components/dashboard/resume-component';
 import type { ImprovedResult, ResumeFieldDiff } from '@/components/common/resume_previewer_context';
 
@@ -38,11 +40,19 @@ interface ManualAddApplicationDialogProps {
 }
 
 type TailorPhase =
-  'idle' | 'uploading-jd' | 'tailoring' | 'retailoring' | 'saving' | 'confirming' | 'linking';
+  | 'idle'
+  | 'uploading-jd'
+  | 'extracting-keywords'
+  | 'tailoring'
+  | 'retailoring'
+  | 'saving'
+  | 'confirming'
+  | 'linking';
 
 const PHASE_LABELS: Record<TailorPhase, string> = {
   idle: '',
   'uploading-jd': 'Uploading job description…',
+  'extracting-keywords': 'Extracting keywords from JD…',
   tailoring: 'Tailoring CV + generating cover letter + running JD match…',
   retailoring: 'Re-tailoring with updated keywords…',
   saving: 'Creating application…',
@@ -79,14 +89,17 @@ export function ManualAddApplicationDialog({
   const [phase, setPhase] = useState<TailorPhase>('idle');
   const [error, setError] = useState<string | null>(null);
 
+  // Keyword-first flow state
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [extractedKeywords, setExtractedKeywords] = useState<ExtractedKeywords | null>(null);
+  const [confirmedSkills, setConfirmedSkills] = useState<string[]>([]);
+
   // Pipeline results state
   const [previewResult, setPreviewResult] = useState<ImprovedResult | null>(null);
   const [coverLetter, setCoverLetter] = useState<string | null>(null);
   const [review, setReview] = useState<ReviewData | null>(null);
-  const [jobId, setJobId] = useState<string | null>(null);
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false);
   const [changesExpanded, setChangesExpanded] = useState(true);
-  const [confirmedSkills, setConfirmedSkills] = useState<string[]>([]);
 
   useEffect(() => {
     if (!open) return;
@@ -104,6 +117,7 @@ export function ManualAddApplicationDialog({
   }, [open]);
 
   const selectedIsMaster = resumes.find((r) => r.resume_id === resumeId)?.is_master ?? false;
+  const hasKeywords = extractedKeywords !== null;
   const hasResults = previewResult !== null;
 
   const resumeLabel = (r: ResumeListItem): string => {
@@ -122,13 +136,122 @@ export function ManualAddApplicationDialog({
     setStatus('saved');
     setError(null);
     setPhase('idle');
+    setExtractedKeywords(null);
+    setConfirmedSkills([]);
     setPreviewResult(null);
     setCoverLetter(null);
     setReview(null);
     setJobId(null);
     setCoverLetterExpanded(false);
-    setConfirmedSkills([]);
   };
+
+  const allKeywords: string[] = useMemo(() => {
+    if (!extractedKeywords) return [];
+    const combined = [
+      ...(extractedKeywords.keywords.required_skills ?? []),
+      ...(extractedKeywords.keywords.preferred_skills ?? []),
+      ...(Array.isArray(extractedKeywords.keywords.keywords)
+        ? (extractedKeywords.keywords.keywords as string[])
+        : []),
+    ];
+    return Array.from(new Set(combined.filter((k) => typeof k === 'string' && k.trim())));
+  }, [extractedKeywords]);
+
+  // Step 1: Upload JD + extract keywords (cheap)
+  const handleExtractKeywords = useCallback(async () => {
+    if (!resumeId || !jobDescription.trim()) {
+      setError(t('tracker.manualAdd.validation'));
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      setPhase('uploading-jd');
+      const newJobId = await uploadJobDescriptions([jobDescription.trim()], resumeId);
+      setJobId(newJobId);
+
+      setPhase('extracting-keywords');
+      const result = await extractJobKeywords(newJobId);
+      setExtractedKeywords(result);
+
+      if (result.company && !company.trim()) setCompany(result.company);
+      if (result.role && !role.trim()) setRole(result.role);
+    } catch {
+      setError('Failed to extract keywords. Please try again.');
+    } finally {
+      setSubmitting(false);
+      setPhase('idle');
+    }
+  }, [resumeId, jobDescription, company, role, t]);
+
+  // Step 2: Run full pipeline with confirmed skills
+  const runPipeline = useCallback(
+    async (skills?: string[], isRetailor?: boolean) => {
+      if (!resumeId || !jobId) return;
+      setSubmitting(true);
+      setError(null);
+
+      try {
+        setPhase(isRetailor ? 'retailoring' : 'tailoring');
+        const currentTailoredData =
+          isRetailor &&
+          previewResult?.data?.resume_preview &&
+          typeof previewResult.data.resume_preview === 'object' &&
+          !Array.isArray(previewResult.data.resume_preview)
+            ? (previewResult.data.resume_preview as ResumeData)
+            : undefined;
+
+        const preview = await previewImproveResume(
+          resumeId,
+          jobId,
+          'full',
+          skills,
+          extrapolationMode,
+          {
+            outputLanguage,
+            includeCoverLetter: true,
+            includeReview: true,
+            baseResumeData: currentTailoredData,
+          }
+        );
+
+        setPreviewResult(preview);
+        if (preview.data.cover_letter) {
+          setCoverLetter(preview.data.cover_letter);
+        }
+        if (preview.data.review) {
+          setReview(preview.data.review as ReviewData);
+        }
+      } catch (err) {
+        setError(
+          err instanceof Error && err.message ? err.message : 'Pipeline failed. Please try again.'
+        );
+      } finally {
+        setSubmitting(false);
+        setPhase('idle');
+      }
+    },
+    [resumeId, jobId, extrapolationMode, outputLanguage, previewResult, coverLetter]
+  );
+
+  const handleGenerate = useCallback(() => {
+    runPipeline(confirmedSkills.length > 0 ? confirmedSkills : undefined);
+  }, [confirmedSkills, runPipeline]);
+
+  const toggleKeyword = useCallback((keyword: string) => {
+    setConfirmedSkills((prev) =>
+      prev.includes(keyword) ? prev.filter((k) => k !== keyword) : [...prev, keyword]
+    );
+  }, []);
+
+  const selectAllKeywords = useCallback(() => {
+    setConfirmedSkills(allKeywords);
+  }, [allKeywords]);
+
+  const handleRetailor = useCallback(() => {
+    runPipeline(confirmedSkills, true);
+  }, [confirmedSkills, runPipeline]);
 
   const buildConfirmPayload = (masterId: string, result: ImprovedResult) => {
     const resumePreview = result.data.resume_preview;
@@ -144,69 +267,13 @@ export function ManualAddApplicationDialog({
           suggestion: item.suggestion,
           lineNumber: typeof item.lineNumber === 'number' ? item.lineNumber : null,
         })) ?? [],
+      cover_letter: coverLetter ?? result.data.cover_letter ?? null,
+      review: (review ?? result.data.review ?? null) as Record<string, unknown> | null,
+      company: company.trim() || undefined,
+      role: role.trim() || undefined,
+      status,
     };
   };
-
-  const runPipeline = useCallback(
-    async (skills?: string[], isRetailor?: boolean) => {
-      if (!resumeId || !jobDescription.trim()) {
-        setError(t('tracker.manualAdd.validation'));
-        return;
-      }
-      setSubmitting(true);
-      setError(null);
-
-      try {
-        let currentJobId = jobId;
-
-        if (!currentJobId) {
-          setPhase('uploading-jd');
-          currentJobId = await uploadJobDescriptions([jobDescription.trim()], resumeId);
-          setJobId(currentJobId);
-        }
-
-        setPhase(isRetailor ? 'retailoring' : 'tailoring');
-        const preview = await previewImproveResume(
-          resumeId,
-          currentJobId,
-          undefined,
-          skills,
-          extrapolationMode,
-          {
-            outputLanguage,
-            includeCoverLetter: true,
-            includeReview: true,
-          }
-        );
-
-        setPreviewResult(preview);
-        setCoverLetter(preview.data.cover_letter ?? null);
-        if (preview.data.review) {
-          setReview(preview.data.review as ReviewData);
-        }
-      } catch {
-        setError('Pipeline failed. Please try again.');
-      } finally {
-        setSubmitting(false);
-        setPhase('idle');
-      }
-    },
-    [resumeId, jobDescription, jobId, extrapolationMode, outputLanguage, t]
-  );
-
-  const handleGenerate = useCallback(() => {
-    runPipeline();
-  }, [runPipeline]);
-
-  const toggleKeyword = useCallback((keyword: string) => {
-    setConfirmedSkills((prev) =>
-      prev.includes(keyword) ? prev.filter((k) => k !== keyword) : [...prev, keyword]
-    );
-  }, []);
-
-  const handleRetailor = useCallback(() => {
-    runPipeline(confirmedSkills, true);
-  }, [confirmedSkills, runPipeline]);
 
   const handleSave = useCallback(async () => {
     if (!previewResult) return;
@@ -214,23 +281,11 @@ export function ManualAddApplicationDialog({
     setError(null);
 
     try {
-      setPhase('saving');
-      const app = await createApplication({
-        resume_id: resumeId,
-        job_description: jobDescription.trim(),
-        company: company.trim() || undefined,
-        role: role.trim() || undefined,
-        status,
-      });
-
       setPhase('confirming');
       const confirmed = await confirmImproveResume(buildConfirmPayload(resumeId, previewResult));
 
       const tailoredResumeId = confirmed?.data?.resume_id;
       if (tailoredResumeId) {
-        setPhase('linking');
-        await updateApplication(app.application_id, { resume_id: tailoredResumeId });
-
         reset();
         onCreated();
         onOpenChange(false);
@@ -250,7 +305,8 @@ export function ManualAddApplicationDialog({
   }, [
     previewResult,
     resumeId,
-    jobDescription,
+    coverLetter,
+    review,
     company,
     role,
     status,
@@ -297,8 +353,8 @@ export function ManualAddApplicationDialog({
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Form fields — collapsed after generation */}
-          {!hasResults && (
+          {/* Form fields — collapsed after keyword extraction */}
+          {!hasKeywords && !hasResults && (
             <>
               <div className="space-y-1">
                 <Label>{t('tracker.manualAdd.resume')}</Label>
@@ -425,7 +481,148 @@ export function ManualAddApplicationDialog({
             </>
           )}
 
-          {/* Pipeline results — shown after generation */}
+          {/* Phase 2: Keyword selection — shown after extraction, before full pipeline */}
+          {hasKeywords && !hasResults && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between border border-black bg-paper-tint p-3">
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-xs uppercase text-ink-soft">
+                    {company.trim() || 'Application'}
+                    {role.trim() ? ` — ${role.trim()}` : ''}
+                  </span>
+                  <span className="font-mono text-xs uppercase">
+                    {outputLanguage === 'de' ? 'DE' : 'EN'} · {extrapolationMode}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExtractedKeywords(null);
+                    setConfirmedSkills([]);
+                    setJobId(null);
+                  }}
+                  className="flex items-center gap-1 font-mono text-xs text-primary hover:underline"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                  Edit
+                </button>
+              </div>
+
+              <div className="space-y-3 border border-black p-4">
+                <div className="flex items-center justify-between">
+                  <span className="font-serif text-sm font-bold uppercase">
+                    JD Keywords Extracted
+                  </span>
+                  <button
+                    type="button"
+                    onClick={selectAllKeywords}
+                    className="font-mono text-xs text-primary hover:underline"
+                  >
+                    Select all
+                  </button>
+                </div>
+                <p className="font-mono text-xs text-ink-soft">
+                  Select keywords you confidently have — these will be injected into your CV via
+                  adjacent extrapolation:
+                </p>
+
+                {extractedKeywords.keywords.required_skills &&
+                  extractedKeywords.keywords.required_skills.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="font-mono text-[10px] uppercase text-ink-soft">
+                        Required
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {extractedKeywords.keywords.required_skills.map((kw) => {
+                          const selected = confirmedSkills.includes(kw);
+                          return (
+                            <button
+                              key={kw}
+                              type="button"
+                              onClick={() => toggleKeyword(kw)}
+                              disabled={submitting}
+                              className={`border px-2 py-0.5 font-mono text-xs transition-colors ${
+                                selected
+                                  ? 'border-primary bg-primary text-white'
+                                  : 'border-black bg-white text-ink hover:bg-paper-tint'
+                              }`}
+                            >
+                              {kw}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                {extractedKeywords.keywords.preferred_skills &&
+                  extractedKeywords.keywords.preferred_skills.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="font-mono text-[10px] uppercase text-ink-soft">
+                        Preferred & Role-Standard
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {extractedKeywords.keywords.preferred_skills.map((kw) => {
+                          const selected = confirmedSkills.includes(kw);
+                          return (
+                            <button
+                              key={kw}
+                              type="button"
+                              onClick={() => toggleKeyword(kw)}
+                              disabled={submitting}
+                              className={`border px-2 py-0.5 font-mono text-xs transition-colors ${
+                                selected
+                                  ? 'border-primary bg-primary text-white'
+                                  : 'border-black bg-white text-ink hover:bg-paper-tint'
+                              }`}
+                            >
+                              {kw}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                {Array.isArray(extractedKeywords.keywords.keywords) &&
+                  extractedKeywords.keywords.keywords.length > 0 && (
+                    <div className="space-y-1">
+                      <span className="font-mono text-[10px] uppercase text-ink-soft">
+                        Domain & Role Ecosystem Keywords
+                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        {(extractedKeywords.keywords.keywords as string[]).map((kw) => {
+                          const selected = confirmedSkills.includes(kw);
+                          return (
+                            <button
+                              key={kw}
+                              type="button"
+                              onClick={() => toggleKeyword(kw)}
+                              disabled={submitting}
+                              className={`border px-2 py-0.5 font-mono text-xs transition-colors ${
+                                selected
+                                  ? 'border-primary bg-primary text-white'
+                                  : 'border-black bg-white text-ink hover:bg-paper-tint'
+                              }`}
+                            >
+                              {kw}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                {confirmedSkills.length > 0 && (
+                  <p className="font-mono text-xs text-success">
+                    {confirmedSkills.length} keyword{confirmedSkills.length > 1 ? 's' : ''} selected
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Phase 3: Pipeline results — shown after generation */}
           {hasResults && (
             <div className="space-y-4">
               {/* Summary bar */}
@@ -445,13 +642,12 @@ export function ManualAddApplicationDialog({
                     setPreviewResult(null);
                     setCoverLetter(null);
                     setReview(null);
-                    setJobId(null);
                     setConfirmedSkills([]);
                   }}
                   className="flex items-center gap-1 font-mono text-xs text-primary hover:underline"
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Edit
+                  Re-extract
                 </button>
               </div>
 
@@ -659,11 +855,25 @@ export function ManualAddApplicationDialog({
         </div>
 
         <DialogFooter className="gap-2">
-          {selectedIsMaster && !hasResults && (
-            <Button onClick={handleGenerate} disabled={submitting || !jobDescription.trim()}>
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Generate'}
+          {/* Step 1: Extract Keywords button */}
+          {selectedIsMaster && !hasKeywords && !hasResults && (
+            <Button onClick={handleExtractKeywords} disabled={submitting || !jobDescription.trim()}>
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Extract Keywords'}
             </Button>
           )}
+          {/* Step 2: Generate with selected keywords */}
+          {selectedIsMaster && hasKeywords && !hasResults && (
+            <Button onClick={handleGenerate} disabled={submitting}>
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : confirmedSkills.length > 0 ? (
+                `Generate with ${confirmedSkills.length} keyword${confirmedSkills.length > 1 ? 's' : ''}`
+              ) : (
+                'Generate (no keyword pre-selection)'
+              )}
+            </Button>
+          )}
+          {/* Step 3: Save results */}
           {selectedIsMaster && hasResults && (
             <Button onClick={handleSave} disabled={submitting}>
               {submitting ? (

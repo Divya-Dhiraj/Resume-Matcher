@@ -172,6 +172,8 @@ export default function TailorPage() {
           suggestion: item.suggestion,
           lineNumber: typeof item.lineNumber === 'number' ? item.lineNumber : null,
         })) ?? [],
+      cover_letter: result.data.cover_letter ?? null,
+      review: (result.data.review ?? null) as Record<string, unknown> | null,
     };
   };
 

@@ -31,6 +31,36 @@ const normalizeStringList = (items?: unknown): string[] | undefined => {
 const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const CAMEL_CASE_START_RE = /^[a-z]+[A-Z0-9]/;
+const LEADING_HTML_TAG_RE = /^(\s*(?:<[^>]+>\s*)*)/;
+const LEADING_JUNK_RE = /^[\s,;:\-–—•*]+/;
+
+export const capitalizeBulletLine = (text: string): string => {
+  const cleaned = text.replace(/ {2,}/g, ' ').trim();
+  if (!cleaned) return cleaned;
+
+  const tagMatch = cleaned.match(LEADING_HTML_TAG_RE);
+  const leadingTags = tagMatch ? tagMatch[1] : '';
+  const body = cleaned.slice(leadingTags.length).replace(LEADING_JUNK_RE, '');
+  if (!body) return cleaned;
+
+  const firstWord = body.split(/\s+/)[0] ?? '';
+  if (CAMEL_CASE_START_RE.test(firstWord)) {
+    return `${leadingTags}${body}`;
+  }
+
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (ch.toLowerCase() !== ch.toUpperCase()) {
+      if (ch === ch.toLowerCase()) {
+        return `${leadingTags}${body.slice(0, i)}${ch.toUpperCase()}${body.slice(i + 1)}`;
+      }
+      break;
+    }
+  }
+  return `${leadingTags}${body}`;
+};
+
 const normalizeDescriptionFields = <T extends DescribedItem>(item: T): T => {
   // A null element inside an otherwise-valid array throws on property access.
   // Guarding the container was not enough — persisted arrays can hold nulls.
@@ -50,7 +80,7 @@ const normalizeDescriptionFields = <T extends DescribedItem>(item: T): T => {
       return;
     }
 
-    nextDescriptions.push(description.trim());
+    nextDescriptions.push(capitalizeBulletLine(description));
     if (styles) {
       nextStyles.push(styles[index] === 'plain' ? 'plain' : 'bullet');
     }

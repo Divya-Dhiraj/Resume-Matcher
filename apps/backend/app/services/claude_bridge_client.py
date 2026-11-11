@@ -23,7 +23,33 @@ import httpx
 logger = logging.getLogger(__name__)
 
 PanelDepth = Literal["light", "mini", "full"]
+CLIProvider = Literal["claude", "gemini"]
 ClaudeModel = Literal["sonnet", "opus", "haiku"]
+GeminiModel = Literal[
+    "gemini-2.5-pro",
+    "gemini-3.1-pro-preview",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "auto",
+]
+BridgeModel = Literal[
+    "sonnet",
+    "opus",
+    "haiku",
+    "gemini-2.5-pro",
+    "gemini-3.1-pro-preview",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3-flash-preview",
+    "gemini-3.8-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "auto",
+]
 
 # Personas layered on top of the task prompt. "Light" is the fast default;
 # "mini" and "full" are run in parallel and whose outputs merged by callers.
@@ -79,9 +105,10 @@ class ClaudeBridgeClient:
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_s
 
-    async def health(self) -> dict[str, str]:
+    async def health(self, *, cli: CLIProvider = "claude") -> dict[str, str]:
         async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(f"{self.base_url}/health")
+            params = {"cli": cli} if cli != "claude" else None
+            resp = await client.get(f"{self.base_url}/health", params=params)
             resp.raise_for_status()
             return resp.json()
 
@@ -90,22 +117,29 @@ class ClaudeBridgeClient:
         prompt: str,
         *,
         system_prompt: str | None = None,
-        model: ClaudeModel = "sonnet",
+        model: BridgeModel = "sonnet",
+        cli: CLIProvider | None = None,
+        api_key: str | None = None,
     ) -> str:
         """One call, one response. Raises on non-200 or timeout."""
+        payload: dict[str, str | int | None] = {
+            "prompt": prompt,
+            "system_prompt": system_prompt,
+            "model": model,
+            "timeout_s": int(self.timeout_s),
+        }
+        if cli is not None:
+            payload["cli"] = cli
+        if api_key:
+            payload["api_key"] = api_key
         async with httpx.AsyncClient(timeout=self.timeout_s) as client:
             resp = await client.post(
                 f"{self.base_url}/generate",
-                json={
-                    "prompt": prompt,
-                    "system_prompt": system_prompt,
-                    "model": model,
-                    "timeout_s": int(self.timeout_s),
-                },
+                json=payload,
             )
             if resp.status_code != 200:
                 raise RuntimeError(
-                    f"claude bridge {resp.status_code}: {resp.text[:400]}"
+                    f"cli bridge {resp.status_code}: {resp.text[:400]}"
                 )
             return resp.json()["content"]
 
@@ -115,7 +149,8 @@ class ClaudeBridgeClient:
         *,
         base_system_prompt: str | None = None,
         depth: PanelDepth = "light",
-        model: ClaudeModel = "sonnet",
+        model: BridgeModel = "sonnet",
+        cli: CLIProvider | None = None,
     ) -> dict[str, str]:
         """Run every persona in the chosen panel in parallel.
 
@@ -132,7 +167,9 @@ class ClaudeBridgeClient:
             if sys_base:
                 sys = f"{sys_base}\n\n{sys}"
             try:
-                content = await self.generate(prompt, system_prompt=sys, model=model)
+                content = await self.generate(
+                    prompt, system_prompt=sys, model=model, cli=cli
+                )
                 return name, content
             except Exception as e:
                 logger.warning("persona %s failed: %s", name, e)

@@ -69,6 +69,34 @@ class TestRemoveAiPhrases:
         # The input dict should not be mutated by remove_ai_phrases
         assert data == data_before
 
+    def test_preserves_capitalization_at_bullet_start(self, sample_resume):
+        data = copy.deepcopy(sample_resume)
+        data["workExperience"][0]["description"] = [
+            "Architected a natural-language-to-SQL agent using LangGraph",
+            "Spearheaded REST API development",
+            "Utilized Python for ETL pipelines",
+            "Moving forward, built automated dashboards",
+            "built a lowercase bullet from LLM output",
+            "iOS app development with Swift",
+        ]
+        cleaned, _ = remove_ai_phrases(data)
+        bullets = cleaned["workExperience"][0]["description"]
+        assert bullets[0].startswith("Designed a natural-language-to-SQL agent")
+        assert bullets[1] == "Led REST API development"
+        assert bullets[2] == "Used Python for ETL pipelines"
+        assert bullets[3] == "Built automated dashboards"
+        assert bullets[4] == "Built a lowercase bullet from LLM output"
+        assert bullets[5] == "iOS app development with Swift"
+
+    def test_longer_phrase_matched_before_substring(self, sample_resume):
+        data = copy.deepcopy(sample_resume)
+        data["workExperience"][0]["description"] = [
+            "Proactively drove a paradigm shift in testing"
+        ]
+        cleaned, _ = remove_ai_phrases(data)
+        bullet = cleaned["workExperience"][0]["description"][0]
+        assert bullet == "Actively drove a change in testing"
+
 
 class TestValidateMasterAlignment:
     """Tests for validate_master_alignment() — fabrication detection."""

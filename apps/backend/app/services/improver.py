@@ -8,7 +8,7 @@ from difflib import SequenceMatcher
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from app.llm import complete_json
+from app.llm import complete_json, get_config_for_task
 from app.prompts import (
     CRITICAL_TRUTHFULNESS_RULES,
     DEFAULT_IMPROVE_PROMPT_ID,
@@ -225,10 +225,401 @@ def _verify_original_matches(actual: Any, expected: str | list[str] | None) -> b
     return actual.strip().casefold() == expected.strip().casefold()
 
 
+# Non-skill buzzwords, broad industries, or generic business phrases that belong in
+# summary/experience prose rather than the technical skills section.
+_NON_SKILL_SECTION_TERMS = {
+    "iot",
+    "5g",
+    "semiconductor industry",
+    "semiconductor",
+    "digital transformation",
+    "global transformation projects",
+    "cross-functional teams",
+    "cross functional teams",
+    "supply chain management",
+    "operations management",
+    "hr analytics",
+    "financial analytics",
+    "supply chain analytics",
+    "stakeholder management",
+    "artificial intelligence",
+    "business intelligence",
+}
+
+# Max comma-separated items per grouped skill block / category line to prevent bloat
+_MAX_ITEMS_PER_SKILL_CATEGORY = 10
+# Max new skills to add per category block on top of existing items
+_MAX_ADDED_SKILLS_PER_CATEGORY = 2
+
+
+def _is_concise_technical_skill(skill: str) -> bool:
+    """Return True if ``skill`` is a concise tool, language, platform, or core
+    technical methodology suitable for the Skills section (not a generic domain
+    buzzword or soft skill)."""
+    cleaned = skill.strip()
+    if not cleaned:
+        return False
+    lower = cleaned.casefold()
+    if lower in _NON_SKILL_SECTION_TERMS:
+        return False
+    # Reject overly long phrases (> 4 words unless it's a known acronymized deliverable like BRD/FRS/EDA/ERD/UAT)
+    words = cleaned.split()
+    if len(words) > 4 and not any(acr in cleaned for acr in ("(BRD)", "(FRS)", "(EDA)", "(ERD)", "(UAT)")):
+        return False
+    # Reject generic industry/department phrases
+    if any(
+        suffix in lower
+        for suffix in (
+            "industry",
+            "projects",
+            "teams",
+            "department",
+            "environment",
+            "collaboration",
+            "communication",
+        )
+    ):
+        return False
+    return True
+
+
+def _pick_skill_category_index(labels: list[str], skill: str) -> int | None:
+    """Return the index of the best-matching category label for ``skill``."""
+    skill_lower = skill.lower()
+    rules: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
+        (
+            ("agile", "scrum", "uat", "user acceptance", "brd", "frs", "requirement", "jira", "confluence", "sprint", "backlog", "documentation", "governance", "quality"),
+            ("tool", "method"),
+        ),
+        (
+            ("azure", "databricks", "aws", "gcp", "etl", "pipeline", "warehouse", "model", "lineage", "catalog", "profiling", "mapping", "spark", "snowflake", "airflow", "dbt", "fabric", "synapse"),
+            ("engineering",),
+        ),
+        (
+            ("sql", "database", "postgres", "oracle", "redshift", "erd", "entity", "schema", "dictionary"),
+            ("database",),
+        ),
+        (
+            ("power bi", "tableau", "quicksight", "kpi", "dashboard", "visual", "dax", "excel", "looker"),
+            ("bi", "visual"),
+        ),
+        (
+            ("sap", "abap", "bods", "bw", "hana"),
+            ("sap",),
+        ),
+        (
+            ("python", "java", "c#", "c++", "scala", "typescript", "javascript"),
+            ("program",),
+        ),
+        (
+            ("llm", "ai", "ml", "rag", "agent", "mining", "segmentation", "regression", "statistics", "eda", "exploratory"),
+            ("ai", "ml"),
+        ),
+    ]
+
+    for keywords, label_tokens in rules:
+        if any(k in skill_lower for k in keywords):
+            for idx, raw_label in enumerate(labels):
+                label = raw_label.lower()
+                if any(tok in label for tok in label_tokens):
+                    return idx
+
+    # Fallback: prefer Tools & Methods or Data Engineering
+    for idx, raw_label in enumerate(labels):
+        label = raw_label.lower()
+        if "language" not in label and ("tool" in label or "engineering" in label):
+            return idx
+    for idx, raw_label in enumerate(labels):
+        if "language" not in raw_label.lower():
+            return idx
+    return None
+
+
+def _count_comma_items(text: str) -> int:
+    """Count top-level comma-separated items (ignoring commas inside parentheses)."""
+    depth = 0
+    count = 1 if text.strip() else 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")" and depth > 0:
+            depth -= 1
+        elif ch == "," and depth == 0:
+            count += 1
+    return count
+
+
+def _add_skill_to_technical_skills_list(tech_skills: list[Any], new_skill: str) -> bool:
+    """Add ``new_skill`` to ``additional.technicalSkills`` cleanly and within limits.
+
+    If ``tech_skills`` uses categorized lines (`"Category: item1, item2"`), merges
+    ``new_skill`` into the matching category line (up to ``_MAX_ITEMS_PER_SKILL_CATEGORY``)
+    instead of dumping standalone uncategorized strings at the bottom.
+    Returns True if the skill was added.
+    """
+    if not _is_concise_technical_skill(new_skill):
+        return False
+
+    full_text = " ".join(str(s) for s in tech_skills if isinstance(s, str))
+    if _skill_mentioned_in_text(new_skill, full_text):
+        return False
+
+    # Detect if tech_skills uses "Category: items..." format
+    colon_indices: list[int] = []
+    colon_labels: list[str] = []
+    for idx, item in enumerate(tech_skills):
+        if isinstance(item, str) and ":" in item:
+            label_part = item.split(":", 1)[0].strip()
+            if 1 <= len(label_part.split()) <= 4:
+                colon_indices.append(idx)
+                colon_labels.append(label_part)
+
+    if len(colon_indices) >= 3:
+        chosen = _pick_skill_category_index(colon_labels, new_skill)
+        if chosen is not None:
+            list_idx = colon_indices[chosen]
+            line = str(tech_skills[list_idx])
+            label_part, items_part = line.split(":", 1)
+            if _count_comma_items(items_part) >= _MAX_ITEMS_PER_SKILL_CATEGORY:
+                return False
+            tech_skills[list_idx] = f"{label_part}: {items_part.strip().rstrip(',')}, {new_skill}"
+            return True
+        return False
+
+    # Flat skill list: cap total items at 24 so it stays readable
+    if len(tech_skills) >= 24:
+        return False
+    tech_skills.append(new_skill)
+    return True
+
+
+def _sync_skill_to_visible_grouped_blocks(data: dict[str, Any], new_skill: str) -> None:
+    """When additional.technicalSkills is hidden and a groupedList Skills customSection
+    is visible (like custom_1), also add new_skill to the best-matching block if within
+    optimal size limits so it renders cleanly without bloating the section."""
+    if not _is_concise_technical_skill(new_skill):
+        return
+
+    section_meta = data.get("sectionMeta")
+    if not isinstance(section_meta, list):
+        return
+    additional_visible = True
+    visible_grouped_keys: list[str] = []
+    for meta in section_meta:
+        if not isinstance(meta, dict):
+            continue
+        if meta.get("key") == "additional" and meta.get("isVisible") is False:
+            additional_visible = False
+        if (
+            not meta.get("isDefault", True)
+            and meta.get("isVisible", True)
+            and meta.get("sectionType") == "groupedList"
+            and isinstance(meta.get("key"), str)
+        ):
+            visible_grouped_keys.append(meta["key"])
+
+    if additional_visible or not visible_grouped_keys:
+        return
+
+    custom_sections = data.get("customSections")
+    if not isinstance(custom_sections, dict):
+        return
+
+    for sec_key in visible_grouped_keys:
+        sec = custom_sections.get(sec_key)
+        if not isinstance(sec, dict) or not isinstance(sec.get("blocks"), list):
+            continue
+        blocks = [b for b in sec["blocks"] if isinstance(b, dict)]
+        if not blocks:
+            continue
+        # Skip if already present in any block
+        for b in blocks:
+            for item in b.get("items") or []:
+                if isinstance(item, str) and _skill_mentioned_in_text(new_skill, item):
+                    return
+
+        labels = [str(b.get("label", "")) for b in blocks]
+        chosen_idx = _pick_skill_category_index(labels, new_skill)
+        if chosen_idx is None:
+            return
+
+        target_block = blocks[chosen_idx]
+        items = target_block.setdefault("items", [])
+        if not isinstance(items, list):
+            return
+
+        # Enforce optimal limit per category block so the Skills section stays compact and scannable
+        joined_items = ", ".join(str(i) for i in items if isinstance(i, str))
+        if _count_comma_items(joined_items) >= _MAX_ITEMS_PER_SKILL_CATEGORY:
+            return
+
+        if items and isinstance(items[-1], str) and ("," in items[-1] or len(items) == 1):
+            items[-1] = f"{items[-1].rstrip(', ')}, {new_skill}"
+        else:
+            items.append(new_skill)
+        return
+
+
+def _trim_comma_separated_line(text: str, max_items: int) -> str:
+    """Trim a comma-separated string (respecting parentheses) to at most ``max_items``
+    and drop non-technical buzzwords."""
+    parts: list[str] = []
+    current: list[str] = []
+    depth = 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+            current.append(ch)
+        elif ch == ")" and depth > 0:
+            depth -= 1
+            current.append(ch)
+        elif ch == "," and depth == 0:
+            token = "".join(current).strip()
+            if token:
+                parts.append(token)
+            current = []
+        else:
+            current.append(ch)
+    tail = "".join(current).strip()
+    if tail:
+        parts.append(tail)
+
+    filtered = [p for p in parts if p.casefold() not in _NON_SKILL_SECTION_TERMS]
+    return ", ".join(filtered[:max_items])
+
+
+_IMPACT_RE = re.compile(
+    r"\d+[%x×]"            # "40%", "3x", "2×"
+    r"|\$[\d,.]+[KMBkmb]?" # "$1.2M", "$500K"
+    r"|€[\d,.]+[KMBkmb]?"  # "€200K"
+    r"|\d{2,}[+]?"         # "50K+", "200"
+    r"|\breduc\w+"         # reduced, reducing, reduction
+    r"|\bincreas\w+"       # increased, increasing
+    r"|\bimprove\w+"       # improved, improvement
+    r"|\bsav\w+"           # saved, savings
+    r"|\bgrew\b"
+    r"|\bgrowth\b"
+    r"|\bgenerat\w+"       # generated
+    r"|\bachiev\w+"        # achieved
+    r"|\bdeliver\w+",      # delivered
+    re.IGNORECASE,
+)
+
+
+def reorder_bullets_by_relevance(
+    data: dict[str, Any],
+    job_keywords: dict[str, Any],
+) -> dict[str, Any]:
+    """Reorder description bullets within each experience/project entry so the
+    most impactful, JD-relevant bullets appear first.
+
+    Scoring: impact signals (metrics, numbers, achievement verbs) are the
+    primary sort key; keyword matches are the tiebreaker.  This keeps
+    quantified achievements above keyword-stuffed filler.
+
+    Preserves ``descriptionStyles`` alignment. Pure local sort, no LLM call.
+    """
+    from app.services.refiner import _keyword_in_text
+
+    all_kw: list[str] = []
+    all_kw.extend(job_keywords.get("required_skills", []))
+    all_kw.extend(job_keywords.get("preferred_skills", []))
+    all_kw.extend(job_keywords.get("keywords", []))
+    kw_list = [k.lower() for k in all_kw if isinstance(k, str) and k.strip()]
+
+    if not kw_list:
+        return data
+
+    result = copy.deepcopy(data)
+
+    def _score_bullet(text: str) -> tuple[int, int]:
+        impact = len(_IMPACT_RE.findall(text))
+        t = text.lower()
+        kw_hits = sum(1 for kw in kw_list if _keyword_in_text(kw, t))
+        return (impact, kw_hits)
+
+    for section_key in ("workExperience", "personalProjects"):
+        entries = result.get(section_key, [])
+        if not isinstance(entries, list):
+            continue
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            descriptions = entry.get("description", [])
+            if not isinstance(descriptions, list) or len(descriptions) < 2:
+                continue
+            styles = entry.get("descriptionStyles", [])
+            has_styles = isinstance(styles, list) and len(styles) == len(descriptions)
+
+            if has_styles:
+                paired = list(zip(descriptions, styles))
+                paired.sort(key=lambda p: _score_bullet(str(p[0])), reverse=True)
+                entry["description"] = [p[0] for p in paired]
+                entry["descriptionStyles"] = [p[1] for p in paired]
+            else:
+                descriptions.sort(key=lambda b: _score_bullet(str(b)), reverse=True)
+
+    return result
+
+
+def enforce_optimal_skills_section(data: dict[str, Any]) -> dict[str, Any]:
+    """Ensure ``additional.technicalSkills`` and any visible ``groupedList`` custom
+    skill blocks stay clean, categorized, and within optimal limits (no keyword dumps)."""
+    result = copy.deepcopy(data)
+    additional = result.get("additional")
+    if isinstance(additional, dict):
+        tech_skills = additional.get("technicalSkills")
+        if isinstance(tech_skills, list) and tech_skills:
+            colon_lines: list[str] = []
+            loose_items: list[str] = []
+            for item in tech_skills:
+                if not isinstance(item, str) or not item.strip():
+                    continue
+                s = item.strip()
+                if ":" in s and 1 <= len(s.split(":", 1)[0].split()) <= 4:
+                    label_part, items_part = s.split(":", 1)
+                    trimmed_items = _trim_comma_separated_line(items_part, _MAX_ITEMS_PER_SKILL_CATEGORY)
+                    colon_lines.append(f"{label_part.strip()}: {trimmed_items}")
+                else:
+                    loose_items.append(s)
+
+            if len(colon_lines) >= 3:
+                # Merge any valid loose technical skills into the categorized lines and drop the rest
+                for loose in loose_items:
+                    _add_skill_to_technical_skills_list(colon_lines, loose)
+                    _sync_skill_to_visible_grouped_blocks(result, loose)
+                additional["technicalSkills"] = colon_lines
+            else:
+                cleaned_flat = [s for s in loose_items if _is_concise_technical_skill(s)][:24]
+                if cleaned_flat:
+                    additional["technicalSkills"] = cleaned_flat
+
+    # Also enforce optimal limits on any groupedList custom sections
+    custom_sections = result.get("customSections")
+    if isinstance(custom_sections, dict):
+        for sec in custom_sections.values():
+            if not isinstance(sec, dict) or sec.get("sectionType") != "groupedList":
+                continue
+            blocks = sec.get("blocks")
+            if not isinstance(blocks, list):
+                continue
+            for block in blocks:
+                if not isinstance(block, dict):
+                    continue
+                if "language" in str(block.get("label", "")).lower():
+                    continue
+                b_items = block.get("items")
+                if isinstance(b_items, list) and len(b_items) == 1 and isinstance(b_items[0], str):
+                    block["items"] = [_trim_comma_separated_line(b_items[0], _MAX_ITEMS_PER_SKILL_CATEGORY)]
+
+    return result
+
+
 def apply_diffs(
     original: dict[str, Any],
     changes: list[ResumeChange],
     allowed_skill_targets: list[dict[str, Any] | str] | None = None,
+    confirmed_skills: list[str] | None = None,
 ) -> tuple[dict[str, Any], list[ResumeChange], list[ResumeChange]]:
     """Apply verified diffs to original resume.
 
@@ -432,12 +823,43 @@ def apply_diffs(
                 continue
             if _normalize_skill_key(new_skill) not in allowed_skill_keys:
                 logger.info("Diff accepted (skill via adjacent extrapolation): %s", new_skill)
-            actual_value.append(new_skill)
+            if not _add_skill_to_technical_skills_list(actual_value, new_skill):
+                logger.info("Diff skipped (skill non-technical or category at optimal limit): %s", new_skill)
+                continue
+            _sync_skill_to_visible_grouped_blocks(result, new_skill)
             applied.append(change)
 
         else:
             logger.info("Diff rejected (unknown action): %s", action)
             rejected.append(change)
+
+    # Curate user-confirmed skills: only add a confirmed skill to the Skills section
+    # if it is a concise technical tool/method NOT already covered in the resume's
+    # summary, experience, or projects, and within optimal category limits.
+    if confirmed_skills:
+        from app.services.refiner import _extract_all_text
+
+        tech_skills = result.setdefault("additional", {}).setdefault("technicalSkills", [])
+        if isinstance(tech_skills, list):
+            full_resume_text = _extract_all_text(result)
+            for raw_skill in confirmed_skills:
+                if not isinstance(raw_skill, str) or not raw_skill.strip():
+                    continue
+                c_skill = raw_skill.strip()
+                if _skill_mentioned_in_text(c_skill, full_resume_text):
+                    continue
+                if _add_skill_to_technical_skills_list(tech_skills, c_skill):
+                    full_resume_text += f" {c_skill}"
+                    applied.append(
+                        ResumeChange(
+                            path="additional.technicalSkills",
+                            action="add_skill",
+                            original=None,
+                            value=c_skill,
+                            reason="Confirmed technical skill added within optimal category limits",
+                        )
+                    )
+                    _sync_skill_to_visible_grouped_blocks(result, c_skill)
 
     return result, applied, rejected
 
@@ -617,12 +1039,19 @@ async def generate_resume_diffs(
         if not isinstance(raw, dict):
             continue
         try:
+            action = raw.get("action", "replace")
+            raw_val = raw.get("value")
+            raw_orig = raw.get("original")
+            if raw_val is None:
+                raw_val = raw_orig if action == "remove" and isinstance(raw_orig, str) else ""
+            if isinstance(raw_orig, list) and action != "reorder":
+                raw_orig = ", ".join(str(x) for x in raw_orig)
             changes.append(
                 ResumeChange(
                     path=str(raw.get("path", "")),
-                    action=raw.get("action", "replace"),
-                    original=raw.get("original"),
-                    value=raw.get("value", ""),
+                    action=action,
+                    original=raw_orig,
+                    value=raw_val,
                     reason=str(raw.get("reason", "")),
                 )
             )
@@ -656,6 +1085,7 @@ async def extract_job_keywords(job_description: str) -> dict[str, Any]:
     return await complete_json(
         prompt=prompt,
         system_prompt="You are an expert job description analyzer.",
+        config=get_config_for_task("keywords"),
         schema_type="keywords",
     )
 
@@ -901,6 +1331,7 @@ async def generate_skill_target_plan(
             "You are a resume skill planning agent. Output only valid JSON with "
             "target_skills and strategy_notes."
         ),
+        config=get_config_for_task("skill_plan"),
         max_tokens=2048,
         schema_type="diff",
     )

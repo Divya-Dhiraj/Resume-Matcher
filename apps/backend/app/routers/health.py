@@ -43,8 +43,13 @@ async def get_status() -> StatusResponse:
     llm_healthy = False
     try:
         config = get_llm_config()
-        # ollama / openai_compatible run without a key, matching check_llm_health.
-        llm_configured = bool(config.api_key) or config.provider in ("ollama", "openai_compatible")
+        # ollama / openai_compatible / CLI bridge providers run without a key, matching check_llm_health.
+        llm_configured = bool(config.api_key) or config.provider in (
+            "ollama",
+            "openai_compatible",
+            "claude_code_cli",
+            "gemini_cli",
+        )
         llm_status = await check_llm_health(config)
         llm_healthy = bool(llm_status.get("healthy"))
     except Exception:

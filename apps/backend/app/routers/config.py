@@ -7,7 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from app.config import settings
-from app.llm import check_llm_health, LLMConfig, resolve_api_key
+from app.llm import check_llm_health, LLMConfig, resolve_api_key, usage_tracker
 from app.schemas import (
     LLMConfigRequest,
     LLMConfigResponse,
@@ -780,12 +780,61 @@ async def update_system_prompts(
     stored["system_prompt_overrides"] = overrides
     _save_config(stored)
 
-    prompts: dict[str, dict[str, str]] = {}
+    update_prompts: dict[str, dict[str, str]] = {}
     for key, info in SYSTEM_PROMPT_REGISTRY.items():
-        prompts[key] = {
+        update_prompts[key] = {
             "label": info["label"],
             "description": info["description"],
             "default": info["default"],
             "current": overrides.get(key, ""),
         }
-    return SystemPromptsResponse(prompts=prompts)
+    return SystemPromptsResponse(prompts=update_prompts)
+
+
+@router.get("/usage")
+async def get_usage_summary() -> dict:
+    """Return token usage summary for the current session."""
+    return usage_tracker.get_summary()
+
+
+@router.post("/usage/reset")
+async def reset_usage() -> dict:
+    """Reset the usage tracker."""
+    usage_tracker.reset()
+    return {"message": "Usage data cleared."}
+
+
+@router.get("/fallback-model")
+async def get_fallback_model() -> dict:
+    """Get the current fallback/light model configuration."""
+    stored = _load_config()
+    fb_provider = stored.get("fallback_provider", "")
+    fb_model = stored.get("fallback_model", "")
+    fb_api_base = stored.get("fallback_api_base", "")
+    return {
+        "fallback_provider": fb_provider,
+        "fallback_model": fb_model,
+        "fallback_api_base": fb_api_base,
+    }
+
+
+@router.put("/fallback-model")
+async def update_fallback_model(request: dict) -> dict:
+    """Update the fallback/light model configuration.
+
+    Used for routing cheap tasks and as automatic fallback when primary
+    model hits rate limits.
+    """
+    stored = _load_config()
+    if "fallback_provider" in request:
+        stored["fallback_provider"] = request["fallback_provider"] or ""
+    if "fallback_model" in request:
+        stored["fallback_model"] = request["fallback_model"] or ""
+    if "fallback_api_base" in request:
+        stored["fallback_api_base"] = request["fallback_api_base"] or ""
+    _save_config(stored)
+    return {
+        "fallback_provider": stored.get("fallback_provider", ""),
+        "fallback_model": stored.get("fallback_model", ""),
+        "fallback_api_base": stored.get("fallback_api_base", ""),
+    }

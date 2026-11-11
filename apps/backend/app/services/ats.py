@@ -49,16 +49,13 @@ def _extract_all_text(data: dict[str, Any]) -> str:
 
 
 def _keyword_in_text(keyword: str, text_lower: str) -> bool:
-    """Whole-word match against pre-lowercased text to avoid false positives.
+    """Whole-word match with synonym support against pre-lowercased text.
 
-    Args:
-        keyword: The keyword to search for (will be lowercased internally).
-        text_lower: Full text that has already been lowercased by the caller.
+    Delegates to refiner's synonym-aware implementation for consistent
+    matching across the entire pipeline.
     """
-    escaped = re.escape(keyword.strip().lower())
-    if not escaped:
-        return False
-    return bool(re.search(rf"(?<!\w){escaped}(?!\w)", text_lower))
+    from app.services.refiner import _keyword_in_text as _refiner_kw_match
+    return _refiner_kw_match(keyword, text_lower)
 
 
 def _compute_skills_coverage(

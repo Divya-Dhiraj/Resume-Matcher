@@ -1,37 +1,27 @@
 'use client';
 
-import { useMemo, useState, useEffect, useCallback } from 'react';
+import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { type ResumeData } from '@/components/dashboard/resume-component';
 import { extractKeywords, calculateMatchStats } from '@/lib/utils/keyword-matcher';
 import { JDDisplay } from './jd-display';
 import { HighlightedResumeView } from './highlighted-resume-view';
-import { reviewResume } from '@/lib/api/resume';
+import {
+  reviewResume,
+  previewImproveResume,
+  updateResume,
+  type ResumeReviewResult,
+} from '@/lib/api/resume';
 import { CheckCircle, Target, AlertTriangle, Loader2, Zap, RefreshCw } from 'lucide-react';
 import { useTranslations } from '@/lib/i18n';
-import { previewImproveResume } from '@/lib/api/resume';
 
 interface JDComparisonViewProps {
   jobDescription: string;
   resumeData: ResumeData;
-  resumeId: string;
+  resumeId: string | null;
   jobId: string | null;
-}
-
-interface ReviewResult {
-  match_score: number;
-  verdict: string;
-  missing_keywords: string[];
-  weak_bullets: Array<{
-    path?: string;
-    text?: string;
-    problem?: string;
-    fix?: string;
-  }>;
-  top_3_fixes: string[];
-  pass: boolean;
-  panel_scores?: Record<string, number>;
-  missing_from_resume?: string[];
-  fabrication_flags?: string[];
+  initialReview?: ResumeReviewResult | null;
+  onReviewChange?: (review: ResumeReviewResult) => void;
+  onResumeDataChange?: (newData: ResumeData) => void;
 }
 
 export function JDComparisonView({
@@ -39,14 +29,23 @@ export function JDComparisonView({
   resumeData,
   resumeId,
   jobId,
+  initialReview = null,
+  onReviewChange,
+  onResumeDataChange,
 }: JDComparisonViewProps) {
   const { t } = useTranslations();
 
-  const [review, setReview] = useState<ReviewResult | null>(null);
+  const [review, setReview] = useState<ResumeReviewResult | null>(initialReview);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const [confirmedSkills, setConfirmedSkills] = useState<Set<string>>(new Set());
   const [retailorLoading, setRetailorLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialReview) {
+      setReview(initialReview);
+    }
+  }, [initialReview]);
 
   // Client-side keyword extraction (still used for the highlighted resume view)
   const keywords = useMemo(() => extractKeywords(jobDescription), [jobDescription]);
@@ -78,19 +77,23 @@ export function JDComparisonView({
 
   const stats = useMemo(() => calculateMatchStats(resumeText, keywords), [resumeText, keywords]);
 
-  const runReview = useCallback(async () => {
-    if (!jobId) return;
-    setReviewLoading(true);
-    setReviewError(null);
-    try {
-      const result = await reviewResume(resumeId, jobId);
-      setReview(result);
-    } catch (err) {
-      setReviewError(err instanceof Error ? err.message : 'Review failed');
-    } finally {
-      setReviewLoading(false);
-    }
-  }, [resumeId, jobId]);
+  const runReview = useCallback(
+    async (force = false) => {
+      if (!jobId || !resumeId) return;
+      setReviewLoading(true);
+      setReviewError(null);
+      try {
+        const result = await reviewResume(resumeId, jobId, force);
+        setReview(result);
+        onReviewChange?.(result);
+      } catch (err) {
+        setReviewError(err instanceof Error ? err.message : 'Review failed');
+      } finally {
+        setReviewLoading(false);
+      }
+    },
+    [resumeId, jobId, onReviewChange]
+  );
 
   const toggleSkill = useCallback((skill: string) => {
     setConfirmedSkills((prev) => {
@@ -102,25 +105,71 @@ export function JDComparisonView({
   }, []);
 
   const handleRetailor = useCallback(async () => {
-    if (!jobId || confirmedSkills.size === 0) return;
+    if (!jobId || !resumeId || confirmedSkills.size === 0) return;
     setRetailorLoading(true);
     try {
-      await previewImproveResume(resumeId, jobId, 'full', Array.from(confirmedSkills));
+      const preview = await previewImproveResume(
+        resumeId,
+        jobId,
+        'full',
+        Array.from(confirmedSkills),
+        'aggressive',
+        {
+          includeReview: true,
+          baseResumeData: resumeData,
+        }
+      );
+      const updatedResume = preview?.data?.resume_preview as ResumeData | undefined;
+      if (updatedResume && typeof updatedResume === 'object') {
+        await updateResume(resumeId, updatedResume as unknown as Record<string, unknown>);
+        onResumeDataChange?.(updatedResume);
+      }
       setConfirmedSkills(new Set());
-      runReview();
+      if (preview?.data?.review) {
+        const inlineRev = preview.data.review as unknown as ResumeReviewResult;
+        setReview(inlineRev);
+        onReviewChange?.(inlineRev);
+      } else {
+        await runReview(true);
+      }
     } catch (err) {
-      console.error('Re-tailor failed:', err);
+      console.warn('Re-tailor failed:', err);
     } finally {
       setRetailorLoading(false);
     }
-  }, [resumeId, jobId, confirmedSkills, runReview]);
+  }, [resumeId, jobId, confirmedSkills, resumeData, onResumeDataChange, onReviewChange, runReview]);
 
-  // Auto-run review on mount when jobId is available
+  // Auto-run review on mount only when no cached review exists yet.
+  // Uses a ref to avoid re-triggering when initialReview arrives async
+  // from the parent (e.g. fetchJobDescription) — the parent sets it
+  // once the JD fetch completes, and the sync effect above picks it up.
+  const autoReviewAttempted = useRef(false);
   useEffect(() => {
-    if (jobId && !review && !reviewLoading) {
-      runReview();
+    if (initialReview) {
+      autoReviewAttempted.current = true;
     }
-  }, [jobId, review, reviewLoading, runReview]);
+  }, [initialReview]);
+
+  useEffect(() => {
+    if (
+      jobId &&
+      resumeId &&
+      !review &&
+      !initialReview &&
+      !reviewLoading &&
+      !autoReviewAttempted.current
+    ) {
+      // Defer slightly so the parent's fetchJobDescription has time to
+      // deliver a cached review via initialReview before we fire an LLM call.
+      const timer = setTimeout(() => {
+        if (!autoReviewAttempted.current) {
+          autoReviewAttempted.current = true;
+          runReview(false);
+        }
+      }, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [jobId, resumeId, review, initialReview, reviewLoading, runReview]);
 
   const scoreColor = (score: number) =>
     score >= 85 ? 'text-green-700' : score >= 60 ? 'text-yellow-700' : 'text-red-700';
@@ -151,7 +200,7 @@ export function JDComparisonView({
             </div>
             <p className="font-mono text-xs text-ink-soft">{reviewError}</p>
             <button
-              onClick={runReview}
+              onClick={() => runReview(true)}
               className="mt-2 border border-black px-3 py-1 font-mono text-xs uppercase hover:bg-ink hover:text-white transition-colors"
             >
               Retry
@@ -181,7 +230,7 @@ export function JDComparisonView({
                 </div>
               </div>
               <button
-                onClick={runReview}
+                onClick={() => runReview(true)}
                 disabled={reviewLoading}
                 className="border border-black px-3 py-1 font-mono text-xs uppercase hover:bg-ink hover:text-white transition-colors disabled:opacity-50"
               >
