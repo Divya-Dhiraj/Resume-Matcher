@@ -53,6 +53,19 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 pip install uv
 ```
 
+### Platform Notes
+
+**macOS / Linux:** All commands below work as-is.
+
+**Windows (native, no WSL):**
+- Use **PowerShell** or **Windows Terminal** (not CMD).
+- Replace `cp` with `copy`: `copy .env.example .env`
+- Python may be `python` instead of `python3` depending on your install.
+- If `uv` is not on your PATH after install, restart your terminal.
+- All other commands (`uv sync`, `npm install`, `npm run dev`) work the same.
+
+**Windows (WSL):** Follow the macOS/Linux instructions inside your WSL terminal.
+
 ---
 
 ## Quick Start
@@ -68,6 +81,7 @@ cd Resume-Matcher
 cd apps/backend
 cp .env.example .env        # Create config from template
 uv sync                      # Install Python dependencies
+uv run playwright install chromium  # Required for PDF export
 uv run app
 
 # 3. Start the frontend (Terminal 2)
@@ -78,7 +92,7 @@ npm run dev                  # Start the dev server
 
 Open your browser to **<http://localhost:3000>** and you're ready to go!
 
-> **Note:** You'll need to configure an AI provider before using the app. See [Configuring Your AI Provider](#configuring-your-ai-provider) below.
+> **Note:** You'll need to configure an AI provider. The easiest way is through the **Settings page** in the app (`http://localhost:3000/settings`) — no `.env` editing required. Or see [Configuring Your AI Provider](#configuring-your-ai-provider) below for `.env` configuration.
 
 ---
 
@@ -140,6 +154,14 @@ uv sync
 ```
 
 This creates a virtual environment and installs all required packages.
+
+#### Install Chromium for PDF export
+
+```bash
+uv run playwright install chromium
+```
+
+This downloads a headless Chromium browser used to render resume and cover letter PDFs. You only need to run this once.
 
 #### Start the backend server
 
@@ -397,7 +419,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 uv sync
 
 # Install with dev dependencies (for testing)
-uv sync --group dev
+uv sync --extra dev
 
 # Run tests
 uv run pytest
@@ -432,7 +454,7 @@ npm run dev -- -p 3001
 
 ### Database Management
 
-Resume Matcher uses TinyDB (JSON file storage). All data is in `apps/backend/data/`:
+Resume Matcher uses SQLite for data storage. All data is in `apps/backend/data/`:
 
 ```bash
 # View database files
@@ -441,7 +463,10 @@ ls apps/backend/data/
 # Backup your data
 cp -r apps/backend/data apps/backend/data-backup
 
-# Reset everything (start fresh)
+# Reset everything via the app (preserves API keys)
+# Go to Settings → scroll to bottom → Reset Database
+
+# Or reset manually (start fresh, loses everything)
 rm -rf apps/backend/data
 ```
 
@@ -544,7 +569,7 @@ Resume-Matcher/
 │   │   ├── app/
 │   │   │   ├── main.py          # Application entry point
 │   │   │   ├── config.py        # Environment configuration
-│   │   │   ├── database.py      # TinyDB wrapper
+│   │   │   ├── database.py      # Async SQLAlchemy/SQLite facade
 │   │   │   ├── llm.py           # AI provider integration
 │   │   │   ├── routers/         # API endpoints
 │   │   │   ├── services/        # Business logic

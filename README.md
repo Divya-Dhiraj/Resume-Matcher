@@ -210,6 +210,7 @@ cd Resume-Matcher
 cd apps/backend
 cp .env.example .env        # Configure your AI provider
 uv sync                      # Install dependencies
+uv run playwright install chromium  # One-time: needed for PDF export
 uv run app
 
 # Frontend (Terminal 2)
@@ -264,7 +265,7 @@ Endpoints:
 |-----------|------------|
 | Backend | FastAPI, Python 3.13+, LiteLLM |
 | Frontend | Next.js 16, React 19, TypeScript |
-| Database | TinyDB (JSON file storage) |
+| Database | SQLite (SQLAlchemy 2.0 async) |
 | Styling | Tailwind CSS 4, Swiss International Style |
 | PDF | Headless Chromium via Playwright |
 
