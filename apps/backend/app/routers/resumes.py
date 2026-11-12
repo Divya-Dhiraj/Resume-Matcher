@@ -831,6 +831,10 @@ async def improve_resume_preview_endpoint(
     stage = "load_job_keywords"
     detail = "Failed to preview resume. Please try again."
     try:
+        # Bundled pipelines (cover letter + review + auto-fix) run 3-5 LLM
+        # calls, so they need roughly 2× the base timeout.
+        bundled = request.include_cover_letter or request.include_review
+        timeout = settings.request_timeout_seconds * (2 if bundled else 1)
         return await asyncio.wait_for(
             _improve_preview_flow(
                 request=request,
@@ -839,19 +843,19 @@ async def improve_resume_preview_endpoint(
                 language=language,
                 prompt_id=prompt_id,
             ),
-            timeout=settings.request_timeout_seconds,
+            timeout=timeout,
         )
     except asyncio.TimeoutError:
         logger.error(
             "Improve preview timed out after %ss for resume %s / job %s",
-            settings.request_timeout_seconds,
+            timeout,
             request.resume_id,
             request.job_id,
         )
         raise HTTPException(
             status_code=504,
             detail=(
-                f"Resume tailoring timed out after {settings.request_timeout_seconds}s. "
+                f"Resume tailoring timed out after {timeout}s. "
                 "If you are running a local LLM, raise REQUEST_TIMEOUT_SECONDS (and the "
                 "matching frontend NEXT_PUBLIC_REQUEST_TIMEOUT_MS); otherwise try a shorter "
                 "job description or a simpler prompt."

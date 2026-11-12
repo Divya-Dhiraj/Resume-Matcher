@@ -2,15 +2,16 @@ import type { NextConfig } from 'next';
 
 const BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || 'http://127.0.0.1:8000';
 
-// Request timeout (ms) for the API proxy. MUST match the backend's
-// REQUEST_TIMEOUT_SECONDS and the client AbortController (lib/api/client.ts) —
-// the shortest layer aborts first, so all three are driven by the same
-// NEXT_PUBLIC_REQUEST_TIMEOUT_MS env var. Bounded to [30s, 30min].
+// Proxy timeout (ms). Set to the maximum any single request might need:
+// bundled pipelines (tailor + cover letter + review) can run 3-5 LLM calls and
+// need ~2× the base 240s. The per-request AbortController in lib/api/client.ts
+// enforces tighter timeouts for non-bundled calls; the proxy just needs to not
+// be the bottleneck. Driven by NEXT_PUBLIC_REQUEST_TIMEOUT_MS when set.
 const rawTimeoutMs = process.env.NEXT_PUBLIC_REQUEST_TIMEOUT_MS;
 const parsedTimeoutMs = rawTimeoutMs ? Number(rawTimeoutMs) : NaN;
 const REQUEST_TIMEOUT_MS = Number.isFinite(parsedTimeoutMs)
   ? Math.min(1_800_000, Math.max(30_000, parsedTimeoutMs))
-  : 240_000;
+  : 480_000;
 
 const nextConfig: NextConfig = {
   output: 'standalone',

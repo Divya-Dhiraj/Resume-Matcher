@@ -125,9 +125,11 @@ async function postImprove(
 ): Promise<ImprovedResult> {
   let response: Response;
   try {
-    // Use the configurable request timeout so NEXT_PUBLIC_REQUEST_TIMEOUT_MS
-    // actually applies to the long-running improve/preview/confirm calls (#776).
-    response = await apiPost(endpoint, payload, DEFAULT_TIMEOUT_MS);
+    // Bundled pipelines (tailor + cover letter + review + auto-fix) run 3-5 LLM
+    // calls, so they need roughly 2× the single-call timeout.
+    const isBundled = payload.include_cover_letter || payload.include_review;
+    const timeoutMs = isBundled ? Math.max(DEFAULT_TIMEOUT_MS, 480_000) : DEFAULT_TIMEOUT_MS;
+    response = await apiPost(endpoint, payload, timeoutMs);
   } catch (networkError) {
     console.error(`Network error during ${endpoint}:`, networkError);
     throw networkError;
